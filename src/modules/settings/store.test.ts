@@ -5,4 +5,8 @@ describe("DEFAULT_PREFERENCES", () => {
   it("enables terminal renderer hibernation by default", () => {
     expect(DEFAULT_PREFERENCES.terminalRendererHibernationEnabled).toBe(true);
   });
+
+  it("disables agent wake lock by default", () => {
+    expect(DEFAULT_PREFERENCES.agentWakeLockEnabled).toBe(false);
+  });
 });

@@ -30,6 +30,7 @@ import {
   setAgentAlertWhenActive,
   setAgentAudibleAlerts,
   setAgentNotifications,
+  setAgentWakeLockEnabled,
   setAutostart,
   setEditorAutoSave,
   setEditorAutoSaveDelay,
@@ -95,6 +96,9 @@ export function GeneralSection() {
   const agentAlertVolume = usePreferencesStore((s) => s.agentAlertVolume);
   const agentAlertWhenActive = usePreferencesStore(
     (s) => s.agentAlertWhenActive,
+  );
+  const agentWakeLockEnabled = usePreferencesStore(
+    (s) => s.agentWakeLockEnabled,
   );
 
   useEffect(() => {
@@ -383,6 +387,15 @@ export function GeneralSection() {
           <Switch
             checked={agentAlertWhenActive}
             onCheckedChange={(v) => void setAgentAlertWhenActive(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Keep awake while agents work"
+          description="Prevent system sleep while Terax is focused and a supported terminal agent is working."
+        >
+          <Switch
+            checked={agentWakeLockEnabled}
+            onCheckedChange={(v) => void setAgentWakeLockEnabled(v)}
           />
         </SettingRow>
       </div>

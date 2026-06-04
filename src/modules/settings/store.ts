@@ -91,6 +91,7 @@ export type Preferences = {
   agentAudibleAlerts: boolean;
   agentAlertVolume: number;
   agentAlertWhenActive: boolean;
+  agentWakeLockEnabled: boolean;
   shortcuts: Record<ShortcutId, KeyBinding[]>;
   editorAutoSave: boolean;
   editorAutoSaveDelay: number;
@@ -140,6 +141,7 @@ const KEY_AGENT_NOTIFICATIONS = "agentNotifications";
 const KEY_AGENT_AUDIBLE_ALERTS = "agentAudibleAlerts";
 const KEY_AGENT_ALERT_VOLUME = "agentAlertVolume";
 const KEY_AGENT_ALERT_WHEN_ACTIVE = "agentAlertWhenActive";
+const KEY_AGENT_WAKE_LOCK_ENABLED = "agentWakeLockEnabled";
 const KEY_SHORTCUTS = "shortcuts";
 const KEY_EDITOR_AUTO_SAVE = "editorAutoSave";
 const KEY_EDITOR_AUTO_SAVE_DELAY = "editorAutoSaveDelay";
@@ -201,6 +203,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   agentAudibleAlerts: true,
   agentAlertVolume: 0.5,
   agentAlertWhenActive: false,
+  agentWakeLockEnabled: false,
   shortcuts: {} as Record<ShortcutId, KeyBinding[]>,
   editorAutoSave: false,
   editorAutoSaveDelay: 1000,
@@ -342,6 +345,9 @@ export async function loadPreferences(): Promise<Preferences> {
     agentAlertWhenActive:
       get<boolean>(KEY_AGENT_ALERT_WHEN_ACTIVE) ??
       DEFAULT_PREFERENCES.agentAlertWhenActive,
+    agentWakeLockEnabled:
+      get<boolean>(KEY_AGENT_WAKE_LOCK_ENABLED) ??
+      DEFAULT_PREFERENCES.agentWakeLockEnabled,
     shortcuts:
       get<Record<ShortcutId, KeyBinding[]>>(KEY_SHORTCUTS) ??
       DEFAULT_PREFERENCES.shortcuts,
@@ -579,6 +585,10 @@ export async function setAgentAlertWhenActive(value: boolean): Promise<void> {
   await writePref(KEY_AGENT_ALERT_WHEN_ACTIVE, value);
 }
 
+export async function setAgentWakeLockEnabled(value: boolean): Promise<void> {
+  await writePref(KEY_AGENT_WAKE_LOCK_ENABLED, value);
+}
+
 export async function setShortcuts(
   value: Record<ShortcutId, KeyBinding[]> | {},
 ): Promise<void> {
@@ -638,6 +648,7 @@ export async function onPreferencesChange(
     [KEY_AGENT_AUDIBLE_ALERTS]: "agentAudibleAlerts",
     [KEY_AGENT_ALERT_VOLUME]: "agentAlertVolume",
     [KEY_AGENT_ALERT_WHEN_ACTIVE]: "agentAlertWhenActive",
+    [KEY_AGENT_WAKE_LOCK_ENABLED]: "agentWakeLockEnabled",
     [KEY_SHORTCUTS]: "shortcuts",
     [KEY_EDITOR_AUTO_SAVE]: "editorAutoSave",
     [KEY_EDITOR_AUTO_SAVE_DELAY]: "editorAutoSaveDelay",

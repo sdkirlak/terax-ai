@@ -22,9 +22,22 @@ function row(
 }
 
 describe("shouldHoldAgentWakeLock", () => {
+  it("does not hold when agent wake lock is disabled", () => {
+    expect(
+      shouldHoldAgentWakeLock({
+        enabled: false,
+        focused: true,
+        terminalRows: {
+          1: row(1, "working"),
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("holds only while Terax is focused and at least one terminal agent is working", () => {
     expect(
       shouldHoldAgentWakeLock({
+        enabled: true,
         focused: true,
         terminalRows: {
           1: row(1, "idle"),
@@ -35,6 +48,7 @@ describe("shouldHoldAgentWakeLock", () => {
 
     expect(
       shouldHoldAgentWakeLock({
+        enabled: true,
         focused: false,
         terminalRows: {
           1: row(1, "working"),
@@ -44,6 +58,7 @@ describe("shouldHoldAgentWakeLock", () => {
 
     expect(
       shouldHoldAgentWakeLock({
+        enabled: true,
         focused: true,
         terminalRows: {
           1: row(1, "needs-input"),
