@@ -75,25 +75,25 @@ fn settings_path() -> Result<PathBuf, String> {
 // `terminalSequence` because hooks lost /dev/tty access in v2.1.139.
 fn hook_cmd(event: &str) -> String {
     format!(
-        r#"[ -n "$TERAX_TERMINAL" ] && printf '{{"terminalSequence":"\\u001b]777;notify;Terax;{event}\\u0007"}}' || true"#
+        r#"[ -n "$TERAX_TERMINAL" ] && printf '{{"terminalSequence":"\\u001b]777;notify;Terax;{event}\\u0007"}}' || true; cat >/dev/null || true"#
     )
 }
 
 fn codex_hook_cmd(event: &str) -> String {
     format!(
-        r#"[ -n "$TERAX_TERMINAL" ] && printf '\033]777;notify;Terax;codex;{event}\007' > /dev/tty || true"#
+        r#"[ -n "$TERAX_TERMINAL" ] && printf '\033]777;notify;Terax;codex;{event}\007' > /dev/tty || true; cat >/dev/null || true"#
     )
 }
 
 fn codex_hook_cmd_windows(event: &str) -> String {
     format!(
-        r#"powershell -NoProfile -Command "if ($env:TERAX_TERMINAL) {{ $s = [string][char]27 + ']777;notify;Terax;codex;{event}' + [string][char]7; $bytes = [System.Text.Encoding]::UTF8.GetBytes($s); $out = [System.IO.File]::OpenWrite('\\.\CONOUT$'); try {{ $out.Write($bytes, 0, $bytes.Length) }} finally {{ $out.Dispose() }} }}""#
+        r#"powershell -NoProfile -Command "if ($env:TERAX_TERMINAL) {{ $s = [string][char]27 + ']777;notify;Terax;codex;{event}' + [string][char]7; $bytes = [System.Text.Encoding]::UTF8.GetBytes($s); $out = [System.IO.File]::OpenWrite('\\.\CONOUT$'); try {{ $out.Write($bytes, 0, $bytes.Length) }} finally {{ $out.Dispose() }} }}; $null = [Console]::In.ReadToEnd()""#
     )
 }
 
 fn antigravity_emit_cmd(event: &str) -> String {
     format!(
-        r#"[ -n "$TERAX_TERMINAL" ] && printf '\033]777;notify;Terax;antigravity;{event}\007' > /dev/tty 2>/dev/null || true; printf '{{}}'"#
+        r#"[ -n "$TERAX_TERMINAL" ] && printf '\033]777;notify;Terax;antigravity;{event}\007' > /dev/tty 2>/dev/null || true; cat >/dev/null || true; printf '{{}}'"#
     )
 }
 
@@ -229,25 +229,37 @@ fn remove_json_hooks(mut root: Value, markers: &[&str]) -> Value {
     root
 }
 
-fn json_hooks_have_markers(root: &Value, specs: &[(&str, String)]) -> bool {
-    specs.iter().all(|(event, marker)| {
-        root.get("hooks")
-            .and_then(|hooks| hooks.get(*event))
-            .and_then(Value::as_array)
-            .is_some_and(|groups| {
-                groups
-                    .iter()
-                    .any(|group| value_contains_any_marker(group, &[marker.as_str()]))
+fn json_hooks_have_command_fragments(root: &Value, event: &str, fragments: &[&str]) -> bool {
+    root.get("hooks")
+        .and_then(|hooks| hooks.get(event))
+        .and_then(Value::as_array)
+        .is_some_and(|groups| {
+            groups.iter().any(|group| {
+                group
+                    .get("hooks")
+                    .and_then(Value::as_array)
+                    .is_some_and(|hooks| {
+                        hooks.iter().any(|hook| {
+                            hook.get("command")
+                                .and_then(Value::as_str)
+                                .is_some_and(|command| {
+                                    fragments.iter().all(|fragment| command.contains(fragment))
+                                })
+                        })
+                    })
             })
-    })
+        })
 }
 
 fn claude_hooks_are_current(root: &Value) -> bool {
-    let specs = HOOK_EVENTS
-        .iter()
-        .map(|(event, marker)| (*event, format!("notify;Terax;{marker}")))
-        .collect::<Vec<_>>();
-    json_hooks_have_markers(root, &specs)
+    HOOK_EVENTS.iter().all(|(event, marker)| {
+        let marker = format!("notify;Terax;{marker}");
+        json_hooks_have_command_fragments(
+            root,
+            event,
+            &[marker.as_str(), "terminalSequence", "cat >/dev/null"],
+        )
+    })
 }
 
 fn codex_hooks_are_current(root: &Value) -> bool {
@@ -265,12 +277,17 @@ fn codex_hooks_are_current(root: &Value) -> bool {
                             hooks.iter().any(|hook| {
                                 hook.get("command")
                                     .and_then(Value::as_str)
-                                    .is_some_and(|command| command.contains(&marker))
+                                    .is_some_and(|command| {
+                                        command.contains(&marker)
+                                            && command.contains("cat >/dev/null")
+                                    })
                                     && hook
                                         .get("commandWindows")
                                         .and_then(Value::as_str)
                                         .is_some_and(|command| {
-                                            command.contains(&marker) && command.contains("CONOUT")
+                                            command.contains(&marker)
+                                                && command.contains("CONOUT")
+                                                && command.contains("ReadToEnd")
                                         })
                             })
                         })
@@ -363,6 +380,7 @@ fn antigravity_hooks_are_current(root: &Value) -> bool {
         && value_contains_any_marker(group, &[ANTIGRAVITY_INTERACTION_MATCHER])
         && value_contains_any_marker(group, &["fullyIdle"])
         && value_contains_any_marker(group, &["/dev/tty"])
+        && value_contains_any_marker(group, &["cat >/dev/null"])
         && value_contains_any_marker(group, &["printf '{}'"])
         && value_contains_any_marker(
             group,
@@ -923,6 +941,36 @@ mod tests {
     }
 
     #[test]
+    fn claude_hooks_drain_stdin_payloads() {
+        let out = merge_hooks(json!({}));
+
+        assert!(command(&out, "UserPromptSubmit", 0).contains("cat >/dev/null"));
+        assert!(command(&out, "Notification", 0).contains("cat >/dev/null"));
+        assert!(command(&out, "Stop", 0).contains("cat >/dev/null"));
+    }
+
+    #[test]
+    fn claude_readiness_rejects_hooks_without_stdin_drain() {
+        let stale = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    { "hooks": [ { "type": "command", "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '{\"terminalSequence\":\"\\\\u001b]777;notify;Terax;working\\\\u0007\"}' || true" } ] }
+                ],
+                "Notification": [
+                    { "hooks": [ { "type": "command", "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '{\"terminalSequence\":\"\\\\u001b]777;notify;Terax;attention\\\\u0007\"}' || true" } ] }
+                ],
+                "Stop": [
+                    { "hooks": [ { "type": "command", "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '{\"terminalSequence\":\"\\\\u001b]777;notify;Terax;finished\\\\u0007\"}' || true" } ] }
+                ]
+            }
+        });
+        let current = merge_hooks(json!({}));
+
+        assert!(!claude_hooks_are_current(&stale));
+        assert!(claude_hooks_are_current(&current));
+    }
+
+    #[test]
     fn preserves_unrelated_settings_and_foreign_hooks() {
         let input = json!({
             "permissions": { "allow": ["Bash"] },
@@ -1064,6 +1112,51 @@ mod tests {
     }
 
     #[test]
+    fn codex_hooks_drain_stdin_payloads() {
+        let merged = codex_merge_hooks(json!({}));
+        let unix_command = command(&merged, "UserPromptSubmit", 0);
+        let windows_command = merged["hooks"]["UserPromptSubmit"][0]["hooks"][0]["commandWindows"]
+            .as_str()
+            .unwrap();
+
+        assert!(unix_command.contains("cat >/dev/null"));
+        assert!(windows_command.contains("ReadToEnd"));
+    }
+
+    #[test]
+    fn codex_readiness_rejects_hooks_without_stdin_drain() {
+        let stale = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    { "hooks": [ {
+                        "type": "command",
+                        "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '\\033]777;notify;Terax;codex;working\\007' > /dev/tty || true",
+                        "commandWindows": "powershell -NoProfile -Command \"if ($env:TERAX_TERMINAL) { $s = [string][char]27 + ']777;notify;Terax;codex;working' + [string][char]7; $out = [System.IO.File]::OpenWrite('\\\\.\\CONOUT$') }\""
+                    } ] }
+                ],
+                "PermissionRequest": [
+                    { "hooks": [ {
+                        "type": "command",
+                        "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '\\033]777;notify;Terax;codex;attention\\007' > /dev/tty || true",
+                        "commandWindows": "powershell -NoProfile -Command \"if ($env:TERAX_TERMINAL) { $s = [string][char]27 + ']777;notify;Terax;codex;attention' + [string][char]7; $out = [System.IO.File]::OpenWrite('\\\\.\\CONOUT$') }\""
+                    } ] }
+                ],
+                "Stop": [
+                    { "hooks": [ {
+                        "type": "command",
+                        "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '\\033]777;notify;Terax;codex;finished\\007' > /dev/tty || true",
+                        "commandWindows": "powershell -NoProfile -Command \"if ($env:TERAX_TERMINAL) { $s = [string][char]27 + ']777;notify;Terax;codex;finished' + [string][char]7; $out = [System.IO.File]::OpenWrite('\\\\.\\CONOUT$') }\""
+                    } ] }
+                ]
+            }
+        });
+        let current = codex_merge_hooks(json!({}));
+
+        assert!(!codex_hooks_are_current(&stale));
+        assert!(codex_hooks_are_current(&current));
+    }
+
+    #[test]
     fn codex_readiness_rejects_stale_unix_only_hooks() {
         let stale = json!({
             "hooks": {
@@ -1092,6 +1185,7 @@ mod tests {
         let stop = root["Stop"][0]["command"].as_str().unwrap();
 
         assert!(pre_invocation.contains("/dev/tty"));
+        assert!(pre_invocation.contains("cat >/dev/null"));
         assert!(pre_invocation.contains("printf '{}'"));
         assert!(stop.contains("fullyIdle"));
         assert!(stop.contains("/dev/tty"));
@@ -1126,6 +1220,19 @@ mod tests {
         assert!(antigravity_hooks_are_current(&current));
     }
 
+    #[test]
+    fn antigravity_readiness_rejects_hooks_without_stdin_drain() {
+        let current = antigravity_merge_hooks(json!({})).unwrap();
+        let stale = serde_json::from_str::<Value>(
+            &serde_json::to_string(&current)
+                .unwrap()
+                .replace("cat >/dev/null || true; ", ""),
+        )
+        .unwrap();
+
+        assert!(!antigravity_hooks_are_current(&stale));
+        assert!(antigravity_hooks_are_current(&current));
+    }
 
     #[test]
     fn owned_file_uninstall_is_safe() {

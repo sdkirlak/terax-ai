@@ -5,11 +5,22 @@ type AudioWindow = Window &
     webkitAudioContext?: typeof AudioContext;
   };
 
+type ToneOscillator = OscillatorNode & {
+  frequency: AudioParam;
+};
+
+type ToneGain = GainNode["gain"] & {
+  value: number;
+};
+
 let injectedPlayer: SoundPlayer | null = null;
 let lastPlayedAt: number | null = null;
 
-const MIN_SOUND_INTERVAL_MS = 1_200;
-const MAX_GAIN = 0.07;
+const MIN_SOUND_INTERVAL_MS = 300;
+const ALERT_DURATION_SECONDS = 0.38;
+const ALERT_ATTACK_SECONDS = 0.025;
+const ALERT_RELEASE_SECONDS = 0.12;
+const MAX_GAIN = 0.22;
 
 export function setAgentSoundPlayerForTest(player: SoundPlayer | null): void {
   injectedPlayer = player;
@@ -27,6 +38,39 @@ function shouldPlay(now: number): boolean {
   }
   lastPlayedAt = now;
   return true;
+}
+
+function scheduleGainEnvelope(
+  gain: ToneGain,
+  now: number,
+  peak: number,
+): void {
+  if (
+    typeof gain.cancelScheduledValues === "function" &&
+    typeof gain.setValueAtTime === "function" &&
+    typeof gain.linearRampToValueAtTime === "function"
+  ) {
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(0.0001, now);
+    gain.linearRampToValueAtTime(peak, now + ALERT_ATTACK_SECONDS);
+    gain.linearRampToValueAtTime(
+      Math.max(peak * 0.72, 0.0001),
+      now + ALERT_DURATION_SECONDS - ALERT_RELEASE_SECONDS,
+    );
+    gain.linearRampToValueAtTime(0.0001, now + ALERT_DURATION_SECONDS);
+    return;
+  }
+
+  gain.value = peak;
+}
+
+function configureOscillator(
+  osc: ToneOscillator,
+  type: OscillatorType,
+  frequency: number,
+): void {
+  osc.type = type;
+  osc.frequency.value = frequency;
 }
 
 export function playAgentAlertSound(volume = 0.5): void {
@@ -64,17 +108,23 @@ export function playAgentAlertSound(volume = 0.5): void {
       audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
     if (!AudioContextCtor) return;
     ctx = new AudioContextCtor();
+    if (ctx.state === "suspended") void ctx.resume();
     const gain = ctx.createGain();
-    const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = 880;
-    gain.gain.value = MAX_GAIN * normalizedVolume;
-    osc.connect(gain);
+    const primary = ctx.createOscillator();
+    const accent = ctx.createOscillator();
+    const now = ctx.currentTime;
+    scheduleGainEnvelope(gain.gain, now, MAX_GAIN * normalizedVolume);
+    configureOscillator(primary, "triangle", 880);
+    configureOscillator(accent, "sine", 1320);
+    primary.connect(gain);
+    accent.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.12);
+    primary.start(now);
+    accent.start(now);
+    primary.stop(now + ALERT_DURATION_SECONDS);
+    accent.stop(now + ALERT_DURATION_SECONDS);
     cleanupTimer = setTimeout(cleanup, 1_000);
-    osc.addEventListener("ended", cleanup);
+    primary.addEventListener("ended", cleanup);
   } catch {
     cleanup();
   }

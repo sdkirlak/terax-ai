@@ -249,6 +249,10 @@ impl AgentDetector {
                 self.disarm();
                 emit(Transition::Exited);
             }
+            Some(b'A') if self.armed => {
+                self.disarm();
+                emit(Transition::Exited);
+            }
             _ => {}
         }
     }
@@ -617,10 +621,7 @@ mod tests {
     #[test]
     fn qualified_marker_does_not_duplicate_started_when_already_armed() {
         let mut d = AgentDetector::new();
-        assert_eq!(
-            run(&mut d, &osc("133;C;codex")),
-            vec![started("codex")]
-        );
+        assert_eq!(run(&mut d, &osc("133;C;codex")), vec![started("codex")]);
         assert_eq!(
             run(&mut d, &osc("777;notify;Terax;codex;attention")),
             vec![Transition::Attention]
@@ -665,6 +666,27 @@ mod tests {
         run(&mut d, &osc("133;C;claude"));
         assert_eq!(run(&mut d, &osc("133;D;0")), vec![Transition::Exited]);
         assert!(run(&mut d, &osc("133;D;0")).is_empty());
+    }
+
+    #[test]
+    fn prompt_start_exits_hook_armed_providers_without_133d() {
+        for (marker, agent) in [
+            ("working", "claude"),
+            ("codex;working", "codex"),
+            ("opencode;working", "opencode"),
+            ("pi;working", "pi"),
+            ("hermes;working", "hermes"),
+            ("antigravity;working", "antigravity"),
+        ] {
+            let mut d = AgentDetector::new();
+            assert_eq!(
+                run(&mut d, &osc(&format!("777;notify;Terax;{marker}"))),
+                vec![started(agent), Transition::Working]
+            );
+
+            assert_eq!(run(&mut d, &osc("133;A")), vec![Transition::Exited]);
+            assert!(run(&mut d, &osc("133;A")).is_empty());
+        }
     }
 
     #[test]
