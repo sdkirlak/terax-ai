@@ -1,4 +1,5 @@
 export { AgentNotificationsBridge } from "./components/AgentNotificationsBridge";
+export { AgentWakeLockBridge } from "./components/AgentWakeLockBridge";
 export {
   AgentStatusCenter,
   AgentStatusCenter as NotificationBell,

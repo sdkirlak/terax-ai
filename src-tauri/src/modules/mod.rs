@@ -3,6 +3,7 @@ pub mod agent_providers;
 pub mod fs;
 pub mod git;
 pub mod net;
+pub mod power;
 pub mod proc;
 pub mod pty;
 pub mod secrets;

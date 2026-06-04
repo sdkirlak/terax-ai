@@ -190,7 +190,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   vimMode: false,
   showHidden: false,
   terminalWebglEnabled: true,
-  terminalRendererHibernationEnabled: false,
+  terminalRendererHibernationEnabled: true,
   terminalFontFamily: "",
   terminalLetterSpacing: 0,
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,

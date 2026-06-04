@@ -11,7 +11,7 @@ import { getLaunchDir } from "@/lib/launchDir";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { usePresence } from "@/lib/usePresence";
 import { useZoom } from "@/lib/useZoom";
-import { AgentNotificationsBridge } from "@/modules/agents";
+import { AgentNotificationsBridge, AgentWakeLockBridge } from "@/modules/agents";
 import { terminalTabAgentSummary } from "@/modules/agents/lib/agentTabs";
 import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
 import { useWindowFocus } from "@/modules/agents/lib/useWindowFocus";
@@ -955,6 +955,7 @@ export default function App() {
             activeLeafId={activeLeafId}
             onActivate={onActivateAgent}
           />
+          <AgentWakeLockBridge />
           <Toaster position="bottom-right" />
 
           {hasComposer ? (

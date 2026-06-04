@@ -1,0 +1,8 @@
+import { describe, expect, it } from "vitest";
+import { DEFAULT_PREFERENCES } from "./store";
+
+describe("DEFAULT_PREFERENCES", () => {
+  it("enables terminal renderer hibernation by default", () => {
+    expect(DEFAULT_PREFERENCES.terminalRendererHibernationEnabled).toBe(true);
+  });
+});
