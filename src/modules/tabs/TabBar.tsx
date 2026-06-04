@@ -1,4 +1,26 @@
+import {
+  Cancel01Icon,
+  Clock01Icon,
+  ComputerTerminal02Icon,
+  GitBranchIcon,
+  GitCompareIcon,
+  Globe02Icon,
+  IncognitoIcon,
+  Notification01Icon,
+  NotificationOff01Icon,
+  PencilEdit02Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,20 +30,12 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtShortcut, MOD_KEY } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { AgentStatusMark } from "@/modules/agents";
+import { AgentIcon } from "@/modules/agents/lib/agentIcon";
+import { agentStatusView } from "@/modules/agents/lib/agentStatus";
+import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
-import {
-  Cancel01Icon,
-  Clock01Icon,
-  ComputerTerminal02Icon,
-  GitBranchIcon,
-  GitCompareIcon,
-  Globe02Icon,
-  IncognitoIcon,
-  PencilEdit02Icon,
-  PlusSignIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef } from "react";
+import { labelFor } from "./lib/tabLabel";
 import type { EditorTab, Tab } from "./lib/useTabs";
 
 type Props = {
@@ -36,6 +50,10 @@ type Props = {
   onClose: (id: number) => void;
   /** Pin (promote) a preview tab to persistent on double-click. */
   onPin: (id: number) => void;
+  /** Set a terminal tab's custom label; empty string resets to default. */
+  onRename: (id: number, title: string) => void;
+  terminalAgentSummaries?: Record<number, TerminalTabAgentSummary>;
+  onToggleAgentTabSound?: (tabId: number) => void;
   compact?: boolean;
 };
 
@@ -50,9 +68,13 @@ export function TabBar({
   onNewGitGraph,
   onClose,
   onPin,
+  onRename,
+  terminalAgentSummaries,
+  onToggleAgentTabSound,
   compact,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // Horizontal wheel scroll without holding shift.
   useEffect(() => {
@@ -90,7 +112,41 @@ export function TabBar({
           <TabsList className="h-7 w-max gap-0.5 bg-transparent p-0">
             {tabs.map((t) => {
               const isPreview = t.kind === "editor" && (t as EditorTab).preview;
-              return (
+              const isActive = t.id === activeId;
+              const agentSummary =
+                t.kind === "terminal"
+                  ? terminalAgentSummaries?.[t.id]
+                  : undefined;
+              const hasAgentStatus =
+                !!agentSummary && agentSummary.kind !== "none";
+
+              // While renaming, render a non-button cell so the <input> is not
+              // nested inside the trigger <button> (invalid HTML, and WebKit
+              // blocks focus/selection on inputs inside buttons).
+              if (editingId === t.id && t.kind === "terminal") {
+                return (
+                  <div
+                    key={t.id}
+                    data-tab-id={t.id}
+                    className={cn(
+                      "flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent text-xs text-foreground",
+                      compact ? "px-1.5" : "px-2",
+                    )}
+                  >
+                    <TabIcon tab={t} agentSummary={agentSummary} />
+                    <TabRenameInput
+                      initial={labelFor(t)}
+                      onCommit={(value) => {
+                        onRename(t.id, value);
+                        setEditingId(null);
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </div>
+                );
+              }
+
+              const trigger = (
                 <TabsTrigger
                   key={t.id}
                   value={String(t.id)}
@@ -107,7 +163,11 @@ export function TabBar({
                     if (e.button === 1) e.preventDefault();
                   }}
                   className={cn(
-                    "group h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-accent data-[state=active]:text-foreground hover:text-foreground/80 justify-between",
+                    "group h-7 shrink-0 gap-1.5 rounded-md text-xs transition-colors hover:text-foreground/80 justify-between",
+                    isActive
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground",
+                    hasAgentStatus && !compact && "min-w-[9rem] max-w-[14rem]",
                     compact
                       ? "px-1.5!"
                       : tabs.length === 1
@@ -117,11 +177,15 @@ export function TabBar({
                 >
                   <span
                     className={cn(
-                      "flex items-center gap-1.5 truncate",
-                      compact ? "max-w-48" : "max-w-80",
+                      "flex min-w-0 items-center gap-1.5 truncate",
+                      compact
+                        ? "max-w-48"
+                        : hasAgentStatus
+                          ? "flex-1"
+                          : "max-w-80",
                     )}
                   >
-                    <TabIcon tab={t} />
+                    <TabIcon tab={t} agentSummary={agentSummary} />
                     {/* Preview tabs use italic to signal the transient state,
                         matching the visual convention from VSCode. */}
                     <span className={cn("truncate", isPreview && "italic")}>
@@ -134,24 +198,66 @@ export function TabBar({
                       />
                     ) : null}
                   </span>
-                  {tabs.length > 1 && (
-                    <span
-                      role="button"
-                      aria-label="Close tab"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClose(t.id);
-                      }}
-                      className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60"
-                    >
-                      <HugeiconsIcon
-                        icon={Cancel01Icon}
-                        size={11}
-                        strokeWidth={2}
-                      />
-                    </span>
-                  )}
+                  <span className="flex shrink-0 items-center gap-0.5">
+                    <TabAgentStatus summary={agentSummary} />
+                    <TabAgentSoundButton
+                      summary={agentSummary}
+                      tabId={t.id}
+                      onToggle={onToggleAgentTabSound}
+                    />
+                    {tabs.length > 1 && (
+                      <span
+                        role="button"
+                        aria-label="Close tab"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClose(t.id);
+                        }}
+                        className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60"
+                      >
+                        <HugeiconsIcon
+                          icon={Cancel01Icon}
+                          size={11}
+                          strokeWidth={2}
+                        />
+                      </span>
+                    )}
+                  </span>
                 </TabsTrigger>
+              );
+
+              if (t.kind !== "terminal") return trigger;
+
+              return (
+                <ContextMenu key={t.id}>
+                  <ContextMenuTrigger asChild>{trigger}</ContextMenuTrigger>
+                  <ContextMenuContent
+                    className="min-w-36"
+                    onCloseAutoFocus={(e) => e.preventDefault()}
+                  >
+                    <ContextMenuItem onSelect={() => setEditingId(t.id)}>
+                      <HugeiconsIcon
+                        icon={PencilEdit02Icon}
+                        size={14}
+                        strokeWidth={1.75}
+                      />
+                      <span className="flex-1">Rename</span>
+                    </ContextMenuItem>
+                    {tabs.length > 1 && (
+                      <>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onSelect={() => onClose(t.id)}>
+                          <HugeiconsIcon
+                            icon={Cancel01Icon}
+                            size={14}
+                            strokeWidth={1.75}
+                          />
+                          <span className="flex-1">Close</span>
+                        </ContextMenuItem>
+                      </>
+                    )}
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </TabsList>
@@ -209,7 +315,11 @@ export function TabBar({
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onNewGitGraph()}>
-              <HugeiconsIcon icon={GitBranchIcon} size={14} strokeWidth={1.75} />
+              <HugeiconsIcon
+                icon={GitBranchIcon}
+                size={14}
+                strokeWidth={1.75}
+              />
               <span className="flex-1">Git Graph</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -219,7 +329,23 @@ export function TabBar({
   );
 }
 
-function TabIcon({ tab }: { tab: Tab }) {
+function TabIcon({
+  tab,
+  agentSummary,
+}: {
+  tab: Tab;
+  agentSummary?: TerminalTabAgentSummary;
+}) {
+  if (tab.kind === "terminal") {
+    if (agentSummary?.kind === "single") {
+      return (
+        <AgentIcon agent={agentSummary.agent} size={14} className="shrink-0" />
+      );
+    }
+    if (agentSummary?.kind === "multiple") {
+      return <AgentIcon agent="agent" size={14} className="shrink-0" />;
+    }
+  }
   if (tab.kind === "editor" || tab.kind === "markdown") {
     const url = fileIconUrl(tab.title);
     return url ? <img src={url} alt="" className="size-3.5 shrink-0" /> : null;
@@ -284,15 +410,136 @@ function TabIcon({ tab }: { tab: Tab }) {
   );
 }
 
-function labelFor(t: Tab): string {
-  if (t.kind === "editor") return t.title;
-  if (t.kind === "preview") return t.title;
-  if (t.kind === "markdown") return t.title;
-  if (t.kind === "ai-diff") return t.title;
-  if (t.kind === "git-diff") return t.title;
-  if (t.kind === "git-history") return t.title;
-  if (t.kind === "git-commit-file") return t.title;
-  if (!t.cwd) return t.title;
-  const parts = t.cwd.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "/";
+function TabAgentStatus({ summary }: { summary?: TerminalTabAgentSummary }) {
+  if (!summary || summary.kind === "none") return null;
+  const view = agentStatusView(summary.status);
+  return (
+    <span
+      title={view.label}
+      className={cn(
+        "relative flex h-3 w-3 shrink-0 items-center justify-center",
+        view.mark === "dots" && "w-4",
+        summary.unread &&
+          "after:absolute after:-top-0.5 after:-right-0.5 after:size-1 after:rounded-full after:bg-primary",
+      )}
+    >
+      <AgentStatusMark view={view} />
+    </span>
+  );
+}
+
+function TabAgentSoundButton({
+  summary,
+  tabId,
+  onToggle,
+}: {
+  summary?: TerminalTabAgentSummary;
+  tabId: number;
+  onToggle?: (tabId: number) => void;
+}) {
+  if (!summary || (summary.kind === "none" && !summary.muted)) return null;
+  const label = summary.soundDisabledGlobally
+    ? "Sound disabled globally"
+    : summary.muted
+      ? "Unmute sound"
+      : "Mute sound";
+
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: tab trigger owns button semantics.
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      title={label}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+      }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+      }}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle?.(tabId);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle?.(tabId);
+      }}
+      className={cn(
+        "flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-70 transition-colors hover:bg-accent hover:text-foreground group-hover:opacity-100",
+        summary.muted && "text-primary opacity-100",
+      )}
+    >
+      <HugeiconsIcon
+        icon={summary.muted ? NotificationOff01Icon : Notification01Icon}
+        size={11}
+        strokeWidth={1.8}
+      />
+    </span>
+  );
+}
+
+function TabRenameInput({
+  initial,
+  onCommit,
+  onCancel,
+}: {
+  initial: string;
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  // Guards against a trailing blur re-resolving an edit that Enter/Escape
+  // already finished (Escape must never commit).
+  const done = useRef(false);
+
+  useEffect(() => {
+    // Focus on the next frame so it runs after the context menu restores focus
+    // to its trigger when closing; a synchronous focus would be stolen.
+    const raf = requestAnimationFrame(() => {
+      ref.current?.focus();
+      ref.current?.select();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const finish = (fn: () => void) => {
+    if (done.current) return;
+    done.current = true;
+    fn();
+  };
+
+  // explicit = the user pressed Enter, which pins even the unchanged label. A
+  // plain blur with no change must not freeze the cwd-derived default into a
+  // custom title.
+  const commit = (value: string, explicit: boolean) => {
+    if (!explicit && value.trim() === initial.trim()) finish(onCancel);
+    else finish(() => onCommit(value));
+  };
+
+  return (
+    <input
+      ref={ref}
+      defaultValue={initial}
+      aria-label="Rename tab"
+      className={cn(
+        "w-28 min-w-0 rounded-sm bg-background px-1 text-xs text-foreground",
+        "outline-none ring-1 ring-border focus:ring-ring",
+      )}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") commit(e.currentTarget.value, true);
+        else if (e.key === "Escape") finish(onCancel);
+      }}
+      onBlur={(e) => {
+        // Switching windows/apps blurs the input; keep the edit open instead
+        // of resolving it on the way out.
+        if (!document.hasFocus()) return;
+        commit(e.currentTarget.value, false);
+      }}
+    />
+  );
 }

@@ -44,8 +44,6 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
         let _ = window.show();
         let _ = window.set_focus();
         if let Some(t) = tab.as_deref().filter(|s| !s.is_empty()) {
-            // emit() serializes via JSON — no string-escape footgun, unlike
-            // eval() with format!(). Frontend listens via Tauri event API.
             let _ = window.emit("terax:settings-tab", t);
         }
         return Ok(());
@@ -61,9 +59,7 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
         // when the user clicks back into the editor or terminal (#33).
         .always_on_top(true);
 
-    // Tie lifecycle to the main window so settings minimizes/closes with it.
-    // macOS: skip parent() — child + always_on_top leaves the settings webview
-    // behind the main window except while the parent is being dragged (#33).
+    // Keep settings tied to main window lifecycle without breaking macOS focus.
     #[cfg(not(target_os = "macos"))]
     let builder = if let Some(main) = app.get_webview_window("main") {
         builder.parent(&main).map_err(|e| e.to_string())?
@@ -83,8 +79,7 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
 
     let window = builder.build().map_err(|e| e.to_string())?;
 
-    // Some Linux compositors (GNOME/Mutter with CSD-by-default) ignore the
-    // builder-time decorations flag — re-assert it after realize.
+    // Some Linux compositors ignore builder-time decoration flags.
     #[cfg(target_os = "linux")]
     {
         let _ = window.set_decorations(false);
@@ -118,9 +113,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // Skip restoring VISIBLE — frontend calls window.show() after first
-        // paint so the user never sees a transparent window-shadow flash on
-        // Windows/Linux.
+        // Frontend shows the window after first paint to avoid chrome flash.
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
@@ -174,6 +167,7 @@ pub fn run() {
             pty::pty_resize,
             pty::pty_close,
             pty::pty_close_all,
+            pty::pty_has_foreground_process,
             fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
@@ -222,6 +216,9 @@ pub fn run() {
             workspace::workspace_current_dir,
             get_launch_dir,
             open_settings_window,
+            agent::agent_provider_readiness,
+            agent::agent_enable_provider_hooks,
+            agent::agent_disable_provider_hooks,
             agent::agent_enable_claude_hooks,
             agent::agent_claude_hooks_status,
             secrets::secrets_get,

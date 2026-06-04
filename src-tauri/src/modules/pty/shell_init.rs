@@ -179,8 +179,7 @@ mod unix {
                         log::warn!("zsh shell integration disabled: {e}");
                     }
                 }
-                // Login shell so /etc/zprofile runs path_helper on macOS — without
-                // this, GUI-launched apps get a minimal PATH missing Homebrew.
+                // GUI launches need macOS path_helper for Homebrew paths.
                 cmd.arg("-l");
             }
             Shell::Bash => {
@@ -261,6 +260,19 @@ mod unix {
             let _ = fs::remove_file(&tmp);
             format!("rename {} -> {}: {e}", tmp.display(), path.display())
         })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn bash_preexec_marker_uses_debug_trap_for_command_text() {
+            assert!(BASHRC.contains("trap '_terax_preexec \"$BASH_COMMAND\"' DEBUG"));
+            assert!(BASHRC.contains("trap -p DEBUG"));
+            assert!(BASHRC.contains("133;C;"));
+            assert!(!BASHRC.contains("PS0='$(_terax_preexec)'"));
+        }
     }
 }
 

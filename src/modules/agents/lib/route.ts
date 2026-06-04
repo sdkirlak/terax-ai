@@ -1,48 +1,94 @@
+import { showAgentToast } from "@/modules/agents/components/AgentToast";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import { showAgentToast } from "../components/AgentToast";
-import { useAgentStore } from "../store/agentStore";
-import { osNotify } from "./notify";
-import type { AgentSource, NotificationKind } from "./types";
+import { type AgentAlertDecision, agentAlertDecision } from "./agentAlerts";
+import { playAgentAlertSound } from "./agentSound";
+import { osNotify as defaultOsNotify } from "./notify";
+import type { AgentStatus } from "./types";
 
-type RouteArgs = {
-  source: AgentSource;
-  agent: string;
-  kind: NotificationKind;
+type Effect = () => void | Promise<void>;
+type SoundEffect = (volume: number) => void | Promise<void>;
+
+type RouteAgentStatusEventArgs = {
+  status: AgentStatus;
+  focused: boolean;
+  exactAgentVisible: boolean;
+  alertWhenActive: boolean;
+  globalSound: boolean;
+  soundVolume: number;
+  tabMuted: boolean;
+  osNotify: Effect;
+  toast: Effect;
+  sound: SoundEffect;
+};
+
+type RouteAgentStatusArgs = {
+  status: AgentStatus;
+  focused: boolean;
+  exactAgentVisible: boolean;
+  tabMuted: boolean;
   title: string;
   body?: string;
-  focused: boolean;
-  /** True when the user is currently looking at this agent. */
-  visible: boolean;
-  /** Allow an in-app toast when focused but not looking at the agent. */
-  allowToast: boolean;
-  tabId?: number;
-  leafId?: number;
+  agent: string;
   onActivate: () => void;
 };
 
-export function routeAgentNotification({
-  source,
-  agent,
-  kind,
+type RouteAgentStatusResult = {
+  unread: boolean;
+};
+
+export function routeAgentStatusEvent({
+  status,
+  focused,
+  exactAgentVisible,
+  alertWhenActive,
+  globalSound,
+  soundVolume,
+  tabMuted,
+  osNotify,
+  toast,
+  sound,
+}: RouteAgentStatusEventArgs): AgentAlertDecision {
+  const decision = agentAlertDecision({
+    status,
+    appFocused: focused,
+    exactAgentVisible,
+    alertWhenActive,
+    globalSound,
+    tabMuted,
+  });
+
+  if (decision.osNotify) void osNotify();
+  if (decision.toast) void toast();
+  if (decision.playSound) void sound(soundVolume);
+
+  return decision;
+}
+
+export function routeAgentStatus({
+  status,
+  focused,
+  exactAgentVisible,
+  tabMuted,
   title,
   body,
-  focused,
-  visible,
-  allowToast,
-  tabId = 0,
-  leafId = 0,
+  agent,
   onActivate,
-}: RouteArgs): void {
-  if (!usePreferencesStore.getState().agentNotifications) return;
-  if (focused && visible) return;
+}: RouteAgentStatusArgs): RouteAgentStatusResult {
+  const preferences = usePreferencesStore.getState();
+  if (!preferences.agentNotifications) return { unread: false };
 
-  useAgentStore.getState().pushNotification({ source, agent, kind, tabId, leafId });
+  const decision = routeAgentStatusEvent({
+    status,
+    focused,
+    exactAgentVisible,
+    alertWhenActive: preferences.agentAlertWhenActive,
+    globalSound: preferences.agentAudibleAlerts,
+    soundVolume: preferences.agentAlertVolume,
+    tabMuted,
+    osNotify: () => defaultOsNotify(title, body ?? agent),
+    toast: () => showAgentToast({ agent, title, body, onActivate }),
+    sound: playAgentAlertSound,
+  });
 
-  if (!focused) {
-    void osNotify(title, body ?? agent);
-    return;
-  }
-  if (allowToast) {
-    showAgentToast({ agent, title, body, onActivate });
-  }
+  return { unread: decision.unread };
 }

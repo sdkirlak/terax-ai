@@ -1,2 +1,6 @@
 export { AgentNotificationsBridge } from "./components/AgentNotificationsBridge";
-export { NotificationBell } from "./components/NotificationBell";
+export {
+  AgentStatusCenter,
+  AgentStatusCenter as NotificationBell,
+} from "./components/AgentStatusCenter";
+export { AgentStatusMark } from "./components/AgentStatusMark";
