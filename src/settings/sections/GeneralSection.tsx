@@ -38,6 +38,7 @@ import {
   setTerminalFontFamily,
   setTerminalFontSize,
   setTerminalLetterSpacing,
+  setTerminalRendererHibernationEnabled,
   setTerminalScrollback,
   setTerminalWebglEnabled,
   setVimMode,
@@ -78,6 +79,9 @@ export function GeneralSection() {
   const showHidden = usePreferencesStore((s) => s.showHidden);
   const terminalWebglEnabled = usePreferencesStore(
     (s) => s.terminalWebglEnabled,
+  );
+  const terminalRendererHibernationEnabled = usePreferencesStore(
+    (s) => s.terminalRendererHibernationEnabled,
   );
   const terminalFontFamily = usePreferencesStore((s) => s.terminalFontFamily);
   const terminalLetterSpacing = usePreferencesStore(
@@ -242,6 +246,17 @@ export function GeneralSection() {
           <Switch
             checked={terminalWebglEnabled}
             onCheckedChange={(v) => void setTerminalWebglEnabled(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Hibernate inactive renderers"
+          description="Release hidden terminal renderers immediately. When off, hidden terminals keep their renderer until the shared pool reaches its limit."
+        >
+          <Switch
+            checked={terminalRendererHibernationEnabled}
+            onCheckedChange={(v) =>
+              void setTerminalRendererHibernationEnabled(v)
+            }
           />
         </SettingRow>
         <SettingRow
