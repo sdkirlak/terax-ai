@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ensureMonoFontsLoaded } from "@/lib/fonts";
+import { useAgentStore } from "@/modules/agents/store/agentStore";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -25,6 +26,7 @@ import {
   releaseSlot,
   setSlotFocused,
 } from "./rendererPool";
+import { hasTerminalInterrupt } from "./terminalInterrupt";
 
 type Callbacks = {
   onSearchReady?: (addon: SearchAddon) => void;
@@ -95,13 +97,13 @@ export function whenSessionReady(leafId: number, timeoutMs = 4000): Promise<void
 export function writeToSession(leafId: number, data: string): boolean {
   const s = sessions.get(leafId);
   if (!s || !s.pty) return false;
-  void s.pty.write(data);
+  writeToPty(leafId, s, data);
   return true;
 }
 
 /**
  * Clear the scrollback and screen of the currently focused terminal, keeping
- * the active prompt line — macOS Terminal's ⌘K behaviour. Returns false when no
+ * the active prompt line, matching macOS Terminal Cmd+K. Returns false when no
  * focused terminal slot is bound (e.g. focus is in the editor or AI panel).
  */
 export function clearFocusedTerminal(): boolean {
@@ -128,7 +130,7 @@ configureRendererPool({
     if (!s) return null;
     return {
       writeToPty: (data) => {
-        s.pty?.write(data);
+        writeToPty(leafId, s, data);
       },
       resizePty: (cols, rows) => {
         s.cols = cols;
@@ -158,6 +160,13 @@ configureRendererPool({
     return !!s && s.visibleNow && s.focusedNow;
   },
 });
+
+function writeToPty(leafId: number, s: Session, data: string): void {
+  if (hasTerminalInterrupt(data)) {
+    useAgentStore.getState().interruptTerminal(leafId);
+  }
+  s.pty?.write(data);
+}
 
 function ensureSession(leafId: number, initialCwd?: string): Session {
   const existing = sessions.get(leafId);
@@ -242,7 +251,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
     cols: s.cols,
     rows: s.rows,
     registerOsc: (term) => {
-      // Shared in-command flag — see osc-handlers.ts. The prompt tracker
+      // Shared in-command flag, see osc-handlers.ts. The prompt tracker
       // flips it on OSC 133 B/C/D/A; the cwd handler reads it to ignore OSC
       // 7 emitted by untrusted command output (remote SSH, `cat` of an
       // attacker file, etc.).
@@ -486,7 +495,10 @@ export function useTerminalSession({
   }, [leafId, visible, focused]);
 
   const write = useCallback(
-    (data: string) => sessions.get(leafId)?.pty?.write(data),
+    (data: string) => {
+      const s = sessions.get(leafId);
+      if (s) writeToPty(leafId, s, data);
+    },
     [leafId],
   );
 
