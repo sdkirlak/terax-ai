@@ -3,12 +3,18 @@ import { useEffect, useRef } from "react";
 import { shouldHoldAgentWakeLock } from "../lib/agentWakeLock";
 import { useWindowFocus } from "../lib/useWindowFocus";
 import { useAgentStore } from "../store/agentStore";
+import { usePreferencesStore } from "@/modules/settings/preferences";
 
 export function AgentWakeLockBridge() {
+  const enabled = usePreferencesStore((s) => s.agentWakeLockEnabled);
   const focused = useWindowFocus();
   const terminalRows = useAgentStore((s) => s.rows.terminal);
   const requested = useRef(false);
-  const shouldHold = shouldHoldAgentWakeLock({ focused, terminalRows });
+  const shouldHold = shouldHoldAgentWakeLock({
+    enabled,
+    focused,
+    terminalRows,
+  });
 
   useEffect(() => {
     if (requested.current === shouldHold) return;
