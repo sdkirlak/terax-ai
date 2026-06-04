@@ -1,3 +1,18 @@
+import {
+  Cancel01Icon,
+  Clock01Icon,
+  ComputerTerminal02Icon,
+  GitBranchIcon,
+  GitCompareIcon,
+  Globe02Icon,
+  IncognitoIcon,
+  Notification01Icon,
+  NotificationOff01Icon,
+  PencilEdit02Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -15,20 +30,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtShortcut, MOD_KEY } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { AgentStatusMark } from "@/modules/agents";
+import { AgentIcon } from "@/modules/agents/lib/agentIcon";
+import { agentStatusView } from "@/modules/agents/lib/agentStatus";
+import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
-import {
-  Cancel01Icon,
-  Clock01Icon,
-  ComputerTerminal02Icon,
-  GitBranchIcon,
-  GitCompareIcon,
-  Globe02Icon,
-  IncognitoIcon,
-  PencilEdit02Icon,
-  PlusSignIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
 import { labelFor } from "./lib/tabLabel";
 import type { EditorTab, Tab } from "./lib/useTabs";
 
@@ -46,6 +52,8 @@ type Props = {
   onPin: (id: number) => void;
   /** Set a terminal tab's custom label; empty string resets to default. */
   onRename: (id: number, title: string) => void;
+  terminalAgentSummaries?: Record<number, TerminalTabAgentSummary>;
+  onToggleAgentTabSound?: (tabId: number) => void;
   compact?: boolean;
 };
 
@@ -61,6 +69,8 @@ export function TabBar({
   onClose,
   onPin,
   onRename,
+  terminalAgentSummaries,
+  onToggleAgentTabSound,
   compact,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -103,6 +113,12 @@ export function TabBar({
             {tabs.map((t) => {
               const isPreview = t.kind === "editor" && (t as EditorTab).preview;
               const isActive = t.id === activeId;
+              const agentSummary =
+                t.kind === "terminal"
+                  ? terminalAgentSummaries?.[t.id]
+                  : undefined;
+              const hasAgentStatus =
+                !!agentSummary && agentSummary.kind !== "none";
 
               // While renaming, render a non-button cell so the <input> is not
               // nested inside the trigger <button> (invalid HTML, and WebKit
@@ -117,7 +133,7 @@ export function TabBar({
                       compact ? "px-1.5" : "px-2",
                     )}
                   >
-                    <TabIcon tab={t} />
+                    <TabIcon tab={t} agentSummary={agentSummary} />
                     <TabRenameInput
                       initial={labelFor(t)}
                       onCommit={(value) => {
@@ -151,6 +167,7 @@ export function TabBar({
                     isActive
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground",
+                    hasAgentStatus && !compact && "min-w-[9rem] max-w-[14rem]",
                     compact
                       ? "px-1.5!"
                       : tabs.length === 1
@@ -160,11 +177,15 @@ export function TabBar({
                 >
                   <span
                     className={cn(
-                      "flex items-center gap-1.5 truncate",
-                      compact ? "max-w-48" : "max-w-80",
+                      "flex min-w-0 items-center gap-1.5 truncate",
+                      compact
+                        ? "max-w-48"
+                        : hasAgentStatus
+                          ? "flex-1"
+                          : "max-w-80",
                     )}
                   >
-                    <TabIcon tab={t} />
+                    <TabIcon tab={t} agentSummary={agentSummary} />
                     {/* Preview tabs use italic to signal the transient state,
                         matching the visual convention from VSCode. */}
                     <span className={cn("truncate", isPreview && "italic")}>
@@ -177,23 +198,31 @@ export function TabBar({
                       />
                     ) : null}
                   </span>
-                  {tabs.length > 1 && (
-                    <span
-                      role="button"
-                      aria-label="Close tab"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClose(t.id);
-                      }}
-                      className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60"
-                    >
-                      <HugeiconsIcon
-                        icon={Cancel01Icon}
-                        size={11}
-                        strokeWidth={2}
-                      />
-                    </span>
-                  )}
+                  <span className="flex shrink-0 items-center gap-0.5">
+                    <TabAgentStatus summary={agentSummary} />
+                    <TabAgentSoundButton
+                      summary={agentSummary}
+                      tabId={t.id}
+                      onToggle={onToggleAgentTabSound}
+                    />
+                    {tabs.length > 1 && (
+                      <span
+                        role="button"
+                        aria-label="Close tab"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClose(t.id);
+                        }}
+                        className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60"
+                      >
+                        <HugeiconsIcon
+                          icon={Cancel01Icon}
+                          size={11}
+                          strokeWidth={2}
+                        />
+                      </span>
+                    )}
+                  </span>
                 </TabsTrigger>
               );
 
@@ -286,7 +315,11 @@ export function TabBar({
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onNewGitGraph()}>
-              <HugeiconsIcon icon={GitBranchIcon} size={14} strokeWidth={1.75} />
+              <HugeiconsIcon
+                icon={GitBranchIcon}
+                size={14}
+                strokeWidth={1.75}
+              />
               <span className="flex-1">Git Graph</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -296,7 +329,23 @@ export function TabBar({
   );
 }
 
-function TabIcon({ tab }: { tab: Tab }) {
+function TabIcon({
+  tab,
+  agentSummary,
+}: {
+  tab: Tab;
+  agentSummary?: TerminalTabAgentSummary;
+}) {
+  if (tab.kind === "terminal") {
+    if (agentSummary?.kind === "single") {
+      return (
+        <AgentIcon agent={agentSummary.agent} size={14} className="shrink-0" />
+      );
+    }
+    if (agentSummary?.kind === "multiple") {
+      return <AgentIcon agent="agent" size={14} className="shrink-0" />;
+    }
+  }
   if (tab.kind === "editor" || tab.kind === "markdown") {
     const url = fileIconUrl(tab.title);
     return url ? <img src={url} alt="" className="size-3.5 shrink-0" /> : null;
@@ -358,6 +407,78 @@ function TabIcon({ tab }: { tab: Tab }) {
       strokeWidth={2}
       className="shrink-0"
     />
+  );
+}
+
+function TabAgentStatus({ summary }: { summary?: TerminalTabAgentSummary }) {
+  if (!summary || summary.kind === "none") return null;
+  const view = agentStatusView(summary.status);
+  return (
+    <span
+      title={view.label}
+      className={cn(
+        "relative flex h-3 w-3 shrink-0 items-center justify-center",
+        view.mark === "dots" && "w-4",
+        summary.unread &&
+          "after:absolute after:-top-0.5 after:-right-0.5 after:size-1 after:rounded-full after:bg-primary",
+      )}
+    >
+      <AgentStatusMark view={view} />
+    </span>
+  );
+}
+
+function TabAgentSoundButton({
+  summary,
+  tabId,
+  onToggle,
+}: {
+  summary?: TerminalTabAgentSummary;
+  tabId: number;
+  onToggle?: (tabId: number) => void;
+}) {
+  if (!summary || (summary.kind === "none" && !summary.muted)) return null;
+  const label = summary.soundDisabledGlobally
+    ? "Sound disabled globally"
+    : summary.muted
+      ? "Unmute sound"
+      : "Mute sound";
+
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: tab trigger owns button semantics.
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      title={label}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+      }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+      }}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle?.(tabId);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle?.(tabId);
+      }}
+      className={cn(
+        "flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-70 transition-colors hover:bg-accent hover:text-foreground group-hover:opacity-100",
+        summary.muted && "text-primary opacity-100",
+      )}
+    >
+      <HugeiconsIcon
+        icon={summary.muted ? NotificationOff01Icon : Notification01Icon}
+        size={11}
+        strokeWidth={1.8}
+      />
+    </span>
   );
 }
 
