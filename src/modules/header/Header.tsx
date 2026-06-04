@@ -1,3 +1,12 @@
+import {
+  GridViewIcon,
+  LayoutTwoColumnIcon,
+  LayoutTwoRowIcon,
+  Settings01Icon,
+  SidebarLeftIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -7,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { WindowControls } from "@/components/WindowControls";
 import { IS_MAC, KEY_SEP, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
+import { NotificationBell } from "@/modules/agents";
+import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   getBindingTokens,
@@ -15,16 +26,6 @@ import {
 } from "@/modules/shortcuts/shortcuts";
 import type { Tab } from "@/modules/tabs";
 import { TabBar } from "@/modules/tabs";
-import { NotificationBell } from "@/modules/agents";
-import {
-  GridViewIcon,
-  LayoutTwoColumnIcon,
-  LayoutTwoRowIcon,
-  Settings01Icon,
-  SidebarLeftIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   SearchInline,
   type SearchInlineHandle,
@@ -45,6 +46,8 @@ type Props = {
   onPin: (id: number) => void;
   /** Set a terminal tab's custom label; empty string resets to default. */
   onRename: (id: number, title: string) => void;
+  terminalAgentSummaries?: Record<number, TerminalTabAgentSummary>;
+  onToggleAgentTabSound?: (tabId: number) => void;
   onToggleSidebar: () => void;
   onSplit: (dir: "row" | "col") => void;
   /** Active tab is a terminal and below the per-tab pane cap. */
@@ -70,6 +73,8 @@ export function Header({
   onClose,
   onPin,
   onRename,
+  terminalAgentSummaries,
+  onToggleAgentTabSound,
   onToggleSidebar,
   onSplit,
   canSplit,
@@ -178,10 +183,12 @@ export function Header({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {!IS_MAC && <NotificationBell
+        {!IS_MAC && (
+          <NotificationBell
             onActivate={onActivateAgent}
             onActivateLocal={onActivateLocalAgent}
-          />}
+          />
+        )}
       </div>
 
       {!IS_MAC && <span className="mx-1 h-5 w-px shrink-0 bg-border" />}
@@ -204,6 +211,8 @@ export function Header({
           onClose={onClose}
           onPin={onPin}
           onRename={onRename}
+          terminalAgentSummaries={terminalAgentSummaries}
+          onToggleAgentTabSound={onToggleAgentTabSound}
           compact={compact}
         />
         <div data-tauri-drag-region className="h-full min-w-2 flex-1" />

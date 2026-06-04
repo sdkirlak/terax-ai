@@ -1,103 +1,220 @@
 import { create } from "zustand";
 import type {
-  AgentNotification,
-  AgentSession,
   AgentStatus,
   LocalAgentState,
+  TerminalAgentRow,
 } from "../lib/types";
 
-const MAX_NOTIFICATIONS = 50;
-
-let notifSeq = 0;
-
 type AgentStoreState = {
-  sessions: Record<number, AgentSession>;
-  localAgent: LocalAgentState;
-  notifications: AgentNotification[];
-  start: (leafId: number, tabId: number, agent: string) => void;
-  setStatus: (leafId: number, status: AgentStatus) => void;
-  finish: (leafId: number) => void;
-  setLocalAgent: (state: LocalAgentState) => void;
-  pushNotification: (
-    n: Omit<AgentNotification, "id" | "at" | "read">,
+  rows: {
+    terminal: Record<number, TerminalAgentRow>;
+    local: LocalAgentState;
+  };
+  mutedTabIds: Set<number>;
+  startTerminal: (
+    leafId: number,
+    tabId: number,
+    agent: string,
+    label?: string,
   ) => void;
-  markAllRead: () => void;
-  clearNotifications: () => void;
+  setTerminalLabel: (leafId: number, label: string) => void;
+  setTerminalStatus: (
+    leafId: number,
+    status: AgentStatus,
+    options?: { unread?: boolean },
+  ) => void;
+  interruptTerminal: (leafId: number) => void;
+  clearTerminalUnread: (leafId: number) => void;
+  clearVisibleTerminalUnread: (options: {
+    focused: boolean;
+    activeLeafId: number | null;
+  }) => void;
+  exitTerminal: (leafId: number) => void;
+  setLocalAgent: (row: LocalAgentState) => void;
+  clearLocalUnread: () => void;
+  toggleTabSoundMute: (tabId: number) => void;
+  setTabSoundMuted: (tabId: number, muted: boolean) => void;
+  resetForTest: () => void;
 };
 
+function terminalRowId(leafId: number): string {
+  return `terminal:${leafId}`;
+}
+
+function nextAttentionSince(
+  status: AgentStatus,
+  now: number,
+  current: number | null,
+): number | null {
+  if (status !== "needs-input") return null;
+  return current ?? now;
+}
+
+function initialRows(): AgentStoreState["rows"] {
+  return { terminal: {}, local: null };
+}
+
 export const useAgentStore = create<AgentStoreState>((set) => ({
-  sessions: {},
-  localAgent: null,
-  notifications: [],
+  rows: initialRows(),
+  mutedTabIds: new Set(),
 
-  start: (leafId, tabId, agent) =>
-    set((s) => {
+  startTerminal: (leafId, tabId, agent, label) =>
+    set((state) => {
       const now = Date.now();
       return {
-        sessions: {
-          ...s.sessions,
-          [leafId]: {
-            leafId,
-            tabId,
-            agent,
-            status: "working",
-            startedAt: now,
-            lastActivityAt: now,
-            attentionSince: null,
+        rows: {
+          ...state.rows,
+          terminal: {
+            ...state.rows.terminal,
+            [leafId]: {
+              id: terminalRowId(leafId),
+              source: "terminal",
+              leafId,
+              tabId,
+              agent,
+              label,
+              status: "idle",
+              unread: false,
+              startedAt: now,
+              lastActivityAt: now,
+              attentionSince: null,
+            },
           },
         },
       };
     }),
 
-  setStatus: (leafId, status) =>
-    set((s) => {
-      const prev = s.sessions[leafId];
-      if (!prev || prev.status === status) return s;
+  setTerminalLabel: (leafId, label) =>
+    set((state) => {
+      const row = state.rows.terminal[leafId];
+      if (!row || row.label === label) return state;
+      return {
+        rows: {
+          ...state.rows,
+          terminal: { ...state.rows.terminal, [leafId]: { ...row, label } },
+        },
+      };
+    }),
+
+  setTerminalStatus: (leafId, status, options) =>
+    set((state) => {
+      const row = state.rows.terminal[leafId];
+      if (!row) return state;
       const now = Date.now();
       return {
-        sessions: {
-          ...s.sessions,
-          [leafId]: {
-            ...prev,
-            status,
-            lastActivityAt: now,
-            attentionSince: status === "waiting" ? now : null,
+        rows: {
+          ...state.rows,
+          terminal: {
+            ...state.rows.terminal,
+            [leafId]: {
+              ...row,
+              status,
+              unread: options?.unread ?? row.unread,
+              lastActivityAt: now,
+              attentionSince: nextAttentionSince(
+                status,
+                now,
+                row.attentionSince,
+              ),
+            },
           },
         },
       };
     }),
 
-  finish: (leafId) =>
-    set((s) => {
-      if (!s.sessions[leafId]) return s;
-      const next = { ...s.sessions };
-      delete next[leafId];
-      return { sessions: next };
+  interruptTerminal: (leafId) =>
+    set((state) => {
+      const row = state.rows.terminal[leafId];
+      if (!row) return state;
+      const now = Date.now();
+      return {
+        rows: {
+          ...state.rows,
+          terminal: {
+            ...state.rows.terminal,
+            [leafId]: {
+              ...row,
+              status: "idle",
+              unread: false,
+              lastActivityAt: now,
+              attentionSince: null,
+            },
+          },
+        },
+      };
     }),
 
-  setLocalAgent: (state) =>
-    set((s) => {
-      const a = s.localAgent;
-      if (a === state) return s;
-      if (a && state && a.status === state.status && a.agent === state.agent) {
-        return s;
+  clearTerminalUnread: (leafId) =>
+    set((state) => {
+      const row = state.rows.terminal[leafId];
+      if (!row?.unread) return state;
+      return {
+        rows: {
+          ...state.rows,
+          terminal: {
+            ...state.rows.terminal,
+            [leafId]: { ...row, unread: false },
+          },
+        },
+      };
+    }),
+
+  clearVisibleTerminalUnread: ({ focused, activeLeafId }) =>
+    set((state) => {
+      if (!focused || activeLeafId === null) return state;
+      const row = state.rows.terminal[activeLeafId];
+      if (!row?.unread) return state;
+      return {
+        rows: {
+          ...state.rows,
+          terminal: {
+            ...state.rows.terminal,
+            [activeLeafId]: { ...row, unread: false },
+          },
+        },
+      };
+    }),
+
+  exitTerminal: (leafId) =>
+    set((state) => {
+      if (!state.rows.terminal[leafId]) return state;
+      const terminal = { ...state.rows.terminal };
+      delete terminal[leafId];
+      return { rows: { ...state.rows, terminal } };
+    }),
+
+  setLocalAgent: (row) =>
+    set((state) => ({ rows: { ...state.rows, local: row } })),
+
+  clearLocalUnread: () =>
+    set((state) => {
+      const local = state.rows.local;
+      if (!local?.unread) return state;
+      return { rows: { ...state.rows, local: { ...local, unread: false } } };
+    }),
+
+  toggleTabSoundMute: (tabId) =>
+    set((state) => {
+      const mutedTabIds = new Set(state.mutedTabIds);
+      if (mutedTabIds.has(tabId)) {
+        mutedTabIds.delete(tabId);
+      } else {
+        mutedTabIds.add(tabId);
       }
-      return { localAgent: state };
+      return { mutedTabIds };
     }),
 
-  pushNotification: (n) =>
-    set((s) => ({
-      notifications: [
-        { ...n, id: `n${++notifSeq}`, at: Date.now(), read: false },
-        ...s.notifications,
-      ].slice(0, MAX_NOTIFICATIONS),
-    })),
-
-  markAllRead: () =>
-    set((s) => {
-      if (!s.notifications.some((n) => !n.read)) return s;
-      return { notifications: s.notifications.map((n) => ({ ...n, read: true })) };
+  setTabSoundMuted: (tabId, muted) =>
+    set((state) => {
+      if (muted === state.mutedTabIds.has(tabId)) return state;
+      const mutedTabIds = new Set(state.mutedTabIds);
+      if (muted) {
+        mutedTabIds.add(tabId);
+      } else {
+        mutedTabIds.delete(tabId);
+      }
+      return { mutedTabIds };
     }),
 
-  clearNotifications: () => set({ notifications: [] }),
+  resetForTest: () => set({ rows: initialRows(), mutedTabIds: new Set() }),
 }));

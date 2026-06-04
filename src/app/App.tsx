@@ -1,3 +1,5 @@
+import type { SearchAddon } from "@xterm/addon-search";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -6,10 +8,14 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getLaunchDir } from "@/lib/launchDir";
-import { usePresence } from "@/lib/usePresence";
 import { quoteShellArg } from "@/lib/shellQuote";
+import { usePresence } from "@/lib/usePresence";
 import { useZoom } from "@/lib/useZoom";
 import { AgentNotificationsBridge } from "@/modules/agents";
+import { terminalTabAgentSummary } from "@/modules/agents/lib/agentTabs";
+import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
+import { useWindowFocus } from "@/modules/agents/lib/useWindowFocus";
+import { useAgentStore } from "@/modules/agents/store/agentStore";
 import {
   AgentRunBridge,
   AiInputBar,
@@ -29,9 +35,9 @@ import {
   createCommandPaletteActions,
 } from "@/modules/command-palette";
 import {
+  type EditorPaneHandle,
   NewEditorDialog,
   useEditorFileSync,
-  type EditorPaneHandle,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
@@ -42,16 +48,17 @@ import {
 } from "@/modules/header";
 import type { PreviewPaneHandle } from "@/modules/preview";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
-  ShortcutsDialog,
-  useGlobalShortcuts,
   type ShortcutHandlers,
   type ShortcutId,
+  ShortcutsDialog,
+  useGlobalShortcuts,
 } from "@/modules/shortcuts";
 import {
-  SidebarRail,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
+  SidebarRail,
   useSidebarPanel,
 } from "@/modules/sidebar";
 import {
@@ -78,8 +85,6 @@ import {
 import { ThemeProvider, useThemeFileEditing } from "@/modules/theme";
 import { UpdaterDialog } from "@/modules/updater";
 import { useWorkspaceEnvStore } from "@/modules/workspace";
-import type { SearchAddon } from "@xterm/addon-search";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CloseDialogs } from "./components/CloseDialogs";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
 import { useTabCloseGuards } from "./hooks/useTabCloseGuards";
@@ -140,8 +145,7 @@ export default function App() {
   useTerminalFileDrop();
   const explorerRef = useRef<FileExplorerHandle>(null);
 
-  // Drives session disposal off the pane tree, not React lifecycles —
-  // split/unsplit re-mount components but the leaf is still live.
+  // Pane splits can remount components while the leaf remains live.
   const liveLeavesRef = useRef<Set<number>>(new Set());
 
   const clearWorkspaceState = useCallback(() => {
@@ -187,6 +191,10 @@ export default function App() {
   const panelOpen = useChatStore((s) => s.panelOpen);
   const setLive = useChatStore((s) => s.setLive);
   const respondToApproval = useChatStore((s) => s.respondToApproval);
+  const agentRows = useAgentStore((s) => s.rows);
+  const mutedTabIds = useAgentStore((s) => s.mutedTabIds);
+  const agentAudibleAlerts = usePreferencesStore((s) => s.agentAudibleAlerts);
+  const appFocused = useWindowFocus();
 
   const { hasComposer, keysLoaded } = useAiBootstrap();
 
@@ -203,6 +211,34 @@ export default function App() {
     tabs,
     launchCwd ?? home,
   );
+
+  const terminalAgentSummaries = useMemo<
+    Record<number, TerminalTabAgentSummary>
+  >(() => {
+    const rows = Object.values(agentRows.terminal);
+    const summaries: Record<number, TerminalTabAgentSummary> = {};
+    for (const tab of tabs) {
+      if (tab.kind !== "terminal") continue;
+      summaries[tab.id] = terminalTabAgentSummary({
+        tabId: tab.id,
+        rows,
+        mutedTabIds,
+        globalSound: agentAudibleAlerts,
+      });
+    }
+    return summaries;
+  }, [agentAudibleAlerts, agentRows, mutedTabIds, tabs]);
+
+  const toggleAgentTabSound = useCallback((tabId: number) => {
+    useAgentStore.getState().toggleTabSoundMute(tabId);
+  }, []);
+
+  useEffect(() => {
+    useAgentStore.getState().clearVisibleTerminalUnread({
+      focused: appFocused,
+      activeLeafId,
+    });
+  }, [appFocused, activeLeafId]);
 
   useWindowTitle(activeTab, explorerRoot);
 
@@ -310,8 +346,6 @@ export default function App() {
         void openSettingsWindow("models");
         return;
       }
-      // Dispatch a window event the composer listens for. Same pattern as
-      // selections — keeps file-explorer decoupled from the AI module.
       window.dispatchEvent(
         new CustomEvent<string>("terax:ai-attach-file", { detail: path }),
       );
@@ -788,6 +822,8 @@ export default function App() {
               onClose={handleClose}
               onPin={pinTab}
               onRename={handleRenameTab}
+              terminalAgentSummaries={terminalAgentSummaries}
+              onToggleAgentTabSound={toggleAgentTabSound}
               onToggleSidebar={toggleSidebar}
               onSplit={splitActivePaneInActiveTab}
               canSplit={
@@ -916,6 +952,7 @@ export default function App() {
           <AgentNotificationsBridge
             tabs={tabs}
             activeId={activeId}
+            activeLeafId={activeLeafId}
             onActivate={onActivateAgent}
           />
           <Toaster position="bottom-right" />

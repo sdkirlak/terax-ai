@@ -1,11 +1,19 @@
 import {
+  ComputerIcon,
+  Moon02Icon,
+  Sun03Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -18,8 +26,9 @@ import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { ThemePref } from "@/modules/settings/store";
 import {
-  TERMINAL_FONT_SIZES,
-  TERMINAL_SCROLLBACK_PRESETS,
+  setAgentAlertVolume,
+  setAgentAlertWhenActive,
+  setAgentAudibleAlerts,
   setAgentNotifications,
   setAutostart,
   setEditorAutoSave,
@@ -27,22 +36,16 @@ import {
   setRestoreWindowState,
   setShowHidden,
   setTerminalFontFamily,
-  setTerminalLetterSpacing,
   setTerminalFontSize,
+  setTerminalLetterSpacing,
   setTerminalScrollback,
   setTerminalWebglEnabled,
   setVimMode,
   setZoomLevel,
+  TERMINAL_FONT_SIZES,
+  TERMINAL_SCROLLBACK_PRESETS,
 } from "@/modules/settings/store";
 import { useTheme } from "@/modules/theme";
-import {
-  ComputerIcon,
-  Moon02Icon,
-  Sun03Icon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 import { SettingRow } from "../components/SettingRow";
 
@@ -84,6 +87,11 @@ export function GeneralSection() {
   const terminalScrollback = usePreferencesStore((s) => s.terminalScrollback);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
+  const agentAudibleAlerts = usePreferencesStore((s) => s.agentAudibleAlerts);
+  const agentAlertVolume = usePreferencesStore((s) => s.agentAlertVolume);
+  const agentAlertWhenActive = usePreferencesStore(
+    (s) => s.agentAlertWhenActive,
+  );
 
   useEffect(() => {
     let alive = true;
@@ -112,10 +120,7 @@ export function GeneralSection() {
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHeader
-        title="General"
-        description="Mode, editor, and startup."
-      />
+      <SectionHeader title="General" description="Mode, editor, and startup." />
 
       <div className="flex flex-col gap-2">
         <Label>Appearance</Label>
@@ -221,15 +226,12 @@ export function GeneralSection() {
                       ⓘ
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent
-                    side="top"
-                    className="max-w-65 text-[11px]"
-                  >
-                    xterm's WebGL renderer caches glyphs in a GPU texture
-                    atlas. On some macOS setups (especially with Nerd Fonts),
-                    the atlas corrupts and terminal text becomes unreadable.
-                    Turn this off as a fallback — performance dips slightly,
-                    but text renders correctly via the DOM renderer.
+                  <TooltipContent side="top" className="max-w-65 text-[11px]">
+                    xterm's WebGL renderer caches glyphs in a GPU texture atlas.
+                    On some macOS setups (especially with Nerd Fonts), the atlas
+                    corrupts and terminal text becomes unreadable. Turn this off
+                    as a fallback. Performance dips slightly, but text renders
+                    correctly via the DOM renderer.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -284,7 +286,11 @@ export function GeneralSection() {
             </SelectTrigger>
             <SelectContent>
               {TERMINAL_FONT_SIZES.map((size) => (
-                <SelectItem key={size} value={String(size)} className="text-[12px]">
+                <SelectItem
+                  key={size}
+                  value={String(size)}
+                  className="text-[12px]"
+                >
                   {size} px
                 </SelectItem>
               ))}
@@ -326,6 +332,42 @@ export function GeneralSection() {
           <Switch
             checked={agentNotifications}
             onCheckedChange={(v) => void setAgentNotifications(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Audible agent alerts"
+          description="Play a short Terax sound when an agent needs input, becomes idle, or fails."
+        >
+          <Switch
+            checked={agentAudibleAlerts}
+            onCheckedChange={(v) => void setAgentAudibleAlerts(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Agent alert volume"
+          description="Adjust the volume of audible agent status alerts."
+        >
+          <div className="flex w-40 items-center gap-3">
+            <Slider
+              value={[agentAlertVolume]}
+              min={0}
+              max={1}
+              step={0.05}
+              disabled={!agentAudibleAlerts}
+              onValueChange={(v) => void setAgentAlertVolume(v[0] ?? 0.5)}
+            />
+            <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+              {Math.round(agentAlertVolume * 100)}%
+            </span>
+          </div>
+        </SettingRow>
+        <SettingRow
+          title="Sound when agent tab is active"
+          description="Play sound for attention-worthy events while you are looking at that exact terminal tab. No unread marker or notification is added."
+        >
+          <Switch
+            checked={agentAlertWhenActive}
+            onCheckedChange={(v) => void setAgentAlertWhenActive(v)}
           />
         </SettingRow>
       </div>
@@ -418,4 +460,3 @@ function AutoSaveDelayInput({
     </SettingRow>
   );
 }
-
