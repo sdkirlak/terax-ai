@@ -1,6 +1,6 @@
 pub mod modules;
 
-use modules::{agent, fs, git, net, pty, secrets, shell, workspace};
+use modules::{agent, fs, git, net, power, pty, secrets, shell, workspace};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "macos")]
@@ -149,6 +149,7 @@ pub fn run() {
             Ok(())
         })
         .manage(pty::PtyState::default())
+        .manage(power::PowerState::default())
         .manage(shell::ShellState::default())
         .manage(secrets::SecretsState::default())
         .manage(fs::watch::FsWatchState::default())
@@ -221,6 +222,7 @@ pub fn run() {
             agent::agent_disable_provider_hooks,
             agent::agent_enable_claude_hooks,
             agent::agent_claude_hooks_status,
+            power::power_set_agent_wake_lock,
             secrets::secrets_get,
             secrets::secrets_set,
             secrets::secrets_delete,
