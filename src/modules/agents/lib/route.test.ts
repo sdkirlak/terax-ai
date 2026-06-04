@@ -88,4 +88,33 @@ describe("routeAgentStatusEvent", () => {
     expect(osNotify).not.toHaveBeenCalled();
     expect(toast).not.toHaveBeenCalled();
   });
+
+  it("plays active exact-tab idle sound without OS notification when alertWhenActive is enabled", () => {
+    const osNotify = vi.fn();
+    const toast = vi.fn();
+    const sound = vi.fn();
+
+    const decision = routeAgentStatusEvent({
+      status: "idle",
+      focused: true,
+      exactAgentVisible: true,
+      alertWhenActive: true,
+      globalSound: true,
+      soundVolume: 1,
+      tabMuted: false,
+      osNotify,
+      toast,
+      sound,
+    });
+
+    expect(decision).toEqual({
+      unread: false,
+      toast: false,
+      osNotify: false,
+      playSound: true,
+    });
+    expect(sound).toHaveBeenCalledWith(1);
+    expect(osNotify).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
+  });
 });

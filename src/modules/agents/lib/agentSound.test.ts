@@ -144,15 +144,88 @@ describe("agentSound", () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it("maps volume to browser gain", () => {
-    const gain = { value: 0 };
+  it("resumes suspended browser audio before playback", () => {
+    const resume = vi.fn(() => Promise.resolve());
     vi.stubGlobal("window", {
       AudioContext: vi.fn(function AudioContextMock() {
         return {
           close: vi.fn(() => Promise.resolve()),
           createGain: () => ({
             connect: vi.fn(),
-            gain,
+            gain: {
+              cancelScheduledValues: vi.fn(),
+              linearRampToValueAtTime: vi.fn(),
+              setValueAtTime: vi.fn(),
+            },
+          }),
+          createOscillator: () => ({
+            addEventListener: vi.fn(),
+            connect: vi.fn(),
+            frequency: { value: 0 },
+            start: vi.fn(),
+            stop: vi.fn(),
+            type: "sine",
+          }),
+          currentTime: 0,
+          destination: {},
+          resume,
+          state: "suspended",
+        };
+      }),
+    });
+
+    playAgentAlertSound();
+
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays a longer browser alert", () => {
+    const stop = vi.fn();
+    vi.stubGlobal("window", {
+      AudioContext: vi.fn(function AudioContextMock() {
+        return {
+          close: vi.fn(() => Promise.resolve()),
+          createGain: () => ({
+            connect: vi.fn(),
+            gain: {
+              cancelScheduledValues: vi.fn(),
+              linearRampToValueAtTime: vi.fn(),
+              setValueAtTime: vi.fn(),
+            },
+          }),
+          createOscillator: () => ({
+            addEventListener: vi.fn(),
+            connect: vi.fn(),
+            frequency: { value: 0 },
+            start: vi.fn(),
+            stop,
+            type: "sine",
+          }),
+          currentTime: 1,
+          destination: {},
+        };
+      }),
+    });
+
+    playAgentAlertSound();
+
+    expect(stop).toHaveBeenCalledWith(1.38);
+  });
+
+  it("maps volume to a louder browser gain envelope", () => {
+    const setValueAtTime = vi.fn();
+    const linearRampToValueAtTime = vi.fn();
+    vi.stubGlobal("window", {
+      AudioContext: vi.fn(function AudioContextMock() {
+        return {
+          close: vi.fn(() => Promise.resolve()),
+          createGain: () => ({
+            connect: vi.fn(),
+            gain: {
+              cancelScheduledValues: vi.fn(),
+              linearRampToValueAtTime,
+              setValueAtTime,
+            },
           }),
           createOscillator: () => ({
             addEventListener: vi.fn(),
@@ -170,6 +243,7 @@ describe("agentSound", () => {
 
     playAgentAlertSound(0.25);
 
-    expect(gain.value).toBeCloseTo(0.0175);
+    expect(setValueAtTime).toHaveBeenCalledWith(0.0001, 0);
+    expect(linearRampToValueAtTime).toHaveBeenCalledWith(0.055, 0.025);
   });
 });
