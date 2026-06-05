@@ -43,6 +43,7 @@ type Props = {
   activeId: number;
   onSelect: (id: number) => void;
   onNew: () => void;
+  onNewBlock: () => void;
   onNewPrivate: () => void;
   onNewPreview: () => void;
   onNewEditor: () => void;
@@ -62,6 +63,7 @@ export function TabBar({
   activeId,
   onSelect,
   onNew,
+  onNewBlock,
   onNewPrivate,
   onNewPreview,
   onNewEditor,
@@ -284,6 +286,15 @@ export function TabBar({
               <span className="text-xs text-muted-foreground">
                 {fmtShortcut(MOD_KEY, "T")}
               </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onNewBlock()}>
+              <HugeiconsIcon
+                icon={ComputerTerminal02Icon}
+                size={14}
+                strokeWidth={1.75}
+              />
+              <span className="flex-1">Block terminal</span>
+              <span className="text-xs text-muted-foreground">beta</span>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onNewPrivate()}>
               <HugeiconsIcon

@@ -3,8 +3,9 @@ import { ensureMonoFontsLoaded } from "@/lib/fonts";
 import { useAgentStore } from "@/modules/agents/store/agentStore";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DormantRing } from "./dormantRing";
+import type { BlockMode } from "../block/lib/modeMachine";
 import {
   createShellIntegrationState,
   registerCwdHandler,
@@ -12,9 +13,12 @@ import {
 } from "./osc-handlers";
 import { openPty, type PtySession } from "./pty-bridge";
 import { shouldReleaseHiddenRenderer } from "./hibernationPolicy";
+import { BlockDecorations } from "../block/lib/blockDecorations";
+import "../block/block.css";
 import {
   acquireSlot,
   applyBackgroundActive,
+  applyCursorBlink,
   applyFontFamily,
   applyFontSize,
   applyLetterSpacing,
@@ -22,8 +26,14 @@ import {
   applyScrollback,
   applyWebglPreference,
   configureRendererPool,
+  disposeLeafSlot,
   focusSlot,
   getSlotForLeaf,
+  isLeafAltScreen,
+  parkLeafSlot,
+  poolSize,
+  poolSlotStats,
+  refreshLeafSlot,
   releaseSlot,
   setSlotFocused,
 } from "./rendererPool";
@@ -54,6 +64,10 @@ type Session = {
   searchQuery: string | null;
   dormantRing: DormantRing;
   hasSlot: boolean;
+  blocks: boolean;
+  blockMode: BlockMode;
+  blockListeners: Set<() => void>;
+  blockDecorations: BlockDecorations | null;
   // True if the slot was in alt-screen mode (TUI like vim, htop, dofek)
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
@@ -169,7 +183,11 @@ function writeToPty(leafId: number, s: Session, data: string): void {
   s.pty?.write(data);
 }
 
-function ensureSession(leafId: number, initialCwd?: string): Session {
+function ensureSession(
+  leafId: number,
+  initialCwd?: string,
+  blocks = false,
+): Session {
   const existing = sessions.get(leafId);
   if (existing) return existing;
 
@@ -192,6 +210,10 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     searchQuery: null,
     dormantRing: new DormantRing(),
     hasSlot: false,
+    blocks,
+    blockMode: "prompt",
+    blockListeners: new Set(),
+    blockDecorations: null,
     altScreenAtRelease: false,
   };
   sessions.set(leafId, session);
@@ -234,7 +256,20 @@ async function openPtyForSession(
       },
     },
     cwd,
+    s.blocks,
   );
+}
+
+function applyBlockMode(leafId: number, mode: BlockMode): void {
+  const s = sessions.get(leafId);
+  if (!s) return;
+  s.blockMode = mode;
+  const slot = getSlotForLeaf(leafId);
+  if (slot) {
+    slot.term.options.disableStdin = mode === "prompt";
+    if (mode !== "prompt") slot.term.focus();
+  }
+  for (const l of s.blockListeners) l();
 }
 
 function bindLeafToSlot(leafId: number, s: Session): void {
@@ -252,6 +287,24 @@ function bindLeafToSlot(leafId: number, s: Session): void {
     cols: s.cols,
     rows: s.rows,
     registerOsc: (term) => {
+      if (s.blocks) {
+        const deco = new BlockDecorations(term, {
+          onCwd: (next) => {
+            markSessionReady(leafId);
+            if (s.lastCwd === next) return;
+            s.lastCwd = next;
+            s.callbacks.onCwd?.(next);
+          },
+          onMode: (mode) => applyBlockMode(leafId, mode),
+        });
+        s.blockDecorations = deco;
+        return [
+          () => {
+            s.blockDecorations = null;
+            deco.dispose();
+          },
+        ];
+      }
       // Shared in-command flag, see osc-handlers.ts. The prompt tracker
       // flips it on OSC 133 B/C/D/A; the cwd handler reads it to ignore OSC
       // 7 emitted by untrusted command output (remote SSH, `cat` of an
@@ -274,6 +327,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
   });
   s.snapshot = null;
   s.hasSlot = true;
+  if (s.blocks) applyBlockMode(leafId, s.blockMode);
   if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd);
   if (s.pendingExit !== null) {
     const code = s.pendingExit;
@@ -388,7 +442,8 @@ export function disposeSession(leafId: number): void {
   const s = sessions.get(leafId);
   if (!s) return;
   s.disposed = true;
-  unbindLeafFromSlot(leafId, s);
+  disposeLeafSlot(leafId);
+  s.hasSlot = false;
   s.snapshot = null;
   s.pty?.close();
   s.pty = null;
@@ -410,6 +465,7 @@ type Options = {
   visible: boolean;
   focused?: boolean;
   initialCwd?: string;
+  blocks?: boolean;
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
   onCwd?: (cwd: string) => void;
@@ -421,6 +477,7 @@ export function useTerminalSession({
   visible,
   focused = true,
   initialCwd,
+  blocks = false,
   onSearchReady,
   onExit,
   onCwd,
@@ -430,7 +487,7 @@ export function useTerminalSession({
 
   useEffect(() => {
     let cancelled = false;
-    const s = ensureSession(leafId, initialCwd);
+    const s = ensureSession(leafId, initialCwd, blocks);
     s.ready.then(() => {
       if (cancelled || s.disposed) return;
       const node = container.current;
@@ -440,13 +497,25 @@ export function useTerminalSession({
         onExit: (c) => cbRef.current.onExit?.(c),
         onCwd: (c) => cbRef.current.onCwd?.(c),
       });
-      if (s.visibleNow && s.focusedNow) focusSlot(leafId);
+      if (s.visibleNow && s.focusedNow && !s.blocks) focusSlot(leafId);
     });
     return () => {
       cancelled = true;
       detachSession(leafId);
     };
-  }, [leafId, container, initialCwd]);
+  }, [leafId, container, initialCwd, blocks]);
+
+  const [blockMode, setBlockMode] = useState<BlockMode>("prompt");
+  useEffect(() => {
+    if (!blocks) return;
+    const s = ensureSession(leafId, initialCwd, blocks);
+    setBlockMode(s.blockMode);
+    const cb = () => setBlockMode(sessions.get(leafId)?.blockMode ?? "prompt");
+    s.blockListeners.add(cb);
+    return () => {
+      s.blockListeners.delete(cb);
+    };
+  }, [leafId, blocks, initialCwd]);
 
   const fontSize = usePreferencesStore((p) => p.terminalFontSize);
   const zoomLevel = usePreferencesStore((p) => p.zoomLevel);
@@ -474,6 +543,11 @@ export function useTerminalSession({
     applyWebglPreference(webglPref);
   }, [webglPref]);
 
+  const cursorBlink = usePreferencesStore((p) => p.terminalCursorBlink);
+  useEffect(() => {
+    applyCursorBlink(cursorBlink);
+  }, [cursorBlink]);
+
   const bgActive = usePreferencesStore(
     (p) => p.backgroundKind === "image" && !!p.backgroundImageId,
   );
@@ -491,8 +565,9 @@ export function useTerminalSession({
     s.focusedNow = focused;
     if (visible) {
       if (s.container && !s.hasSlot) bindLeafToSlot(leafId, s);
+      else if (s.hasSlot) refreshLeafSlot(leafId);
       setSlotFocused(leafId, focused);
-      if (focused) focusSlot(leafId);
+      if (focused && !s.blocks) focusSlot(leafId);
     } else if (
       shouldReleaseHiddenRenderer({
         visible,
@@ -500,12 +575,16 @@ export function useTerminalSession({
         hibernationEnabled,
       })
     ) {
-      unbindLeafFromSlot(leafId, s);
+      if (s.blocks || isLeafAltScreen(leafId)) parkLeafSlot(leafId);
+      else unbindLeafFromSlot(leafId, s);
     } else {
       setSlotFocused(leafId, false);
-      getSlotForLeaf(leafId)?.term.blur();
+      if (s.hasSlot) {
+        if (s.blocks || isLeafAltScreen(leafId)) parkLeafSlot(leafId);
+        else getSlotForLeaf(leafId)?.term.blur();
+      }
     }
-  }, [leafId, visible, focused, hibernationEnabled]);
+  }, [leafId, visible, focused, hibernationEnabled, blocks]);
 
   const write = useCallback(
     (data: string) => {
@@ -553,9 +632,48 @@ export function useTerminalSession({
     applyPoolTheme();
   }, []);
 
+  const submitCommand = useCallback(
+    (text: string) => {
+      const s = sessions.get(leafId);
+      if (s) writeToPty(leafId, s, `${text}\r`);
+    },
+    [leafId],
+  );
+
+  const interrupt = useCallback(() => {
+    const s = sessions.get(leafId);
+    if (s) writeToPty(leafId, s, "\x03");
+  }, [leafId]);
+
+  const selectBlockAt = useCallback(
+    (clientY: number) =>
+      sessions.get(leafId)?.blockDecorations?.selectBlockAt(clientY),
+    [leafId],
+  );
+
   return useMemo(
-    () => ({ write, focus, getBuffer, getSelection, applyTheme }),
-    [write, focus, getBuffer, getSelection, applyTheme],
+    () => ({
+      write,
+      focus,
+      getBuffer,
+      getSelection,
+      applyTheme,
+      blockMode,
+      submitCommand,
+      interrupt,
+      selectBlockAt,
+    }),
+    [
+      write,
+      focus,
+      getBuffer,
+      getSelection,
+      applyTheme,
+      blockMode,
+      submitCommand,
+      interrupt,
+      selectBlockAt,
+    ],
   );
 }
 
@@ -564,4 +682,41 @@ const ANSI_RE =
 
 function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, "");
+}
+
+export function terminalDebugStats() {
+  const liveSessions = [...sessions.entries()].map(([leafId, s]) => ({
+    leafId,
+    pty: !!s.pty,
+    visible: s.visibleNow,
+    focused: s.focusedNow,
+    hasSlot: s.hasSlot,
+    ringBytes: s.dormantRing.byteLength(),
+    snapshotLen: s.snapshot?.length ?? 0,
+    shellExited: s.shellExited,
+  }));
+  const ringTotal = liveSessions.reduce((n, s) => n + s.ringBytes, 0);
+  const snapshotTotal = liveSessions.reduce((n, s) => n + s.snapshotLen, 0);
+  const slots = poolSlotStats();
+  return {
+    poolSize: poolSize(),
+    webglContexts: slots.filter((s) => s.webgl).length,
+    idleSlots: slots.filter((s) => s.leafId === null).length,
+    slots,
+    sessionCount: liveSessions.length,
+    sessions: liveSessions,
+    ringBytesTotal: ringTotal,
+    snapshotCharsTotal: snapshotTotal,
+    domCanvases: document.querySelectorAll("canvas").length,
+    domScreens: document.querySelectorAll(".xterm-screen").length,
+    domRows: document.querySelectorAll(".xterm-rows > div").length,
+    jsHeapBytes:
+      (performance as unknown as { memory?: { usedJSHeapSize: number } })
+        .memory?.usedJSHeapSize ?? null,
+  };
+}
+
+if (import.meta.env?.DEV && typeof window !== "undefined") {
+  (window as unknown as { __teraxTerm?: unknown }).__teraxTerm =
+    terminalDebugStats;
 }

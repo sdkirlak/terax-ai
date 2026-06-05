@@ -81,6 +81,7 @@ export type Preferences = {
   showHidden: boolean;
   terminalWebglEnabled: boolean;
   terminalRendererHibernationEnabled: boolean;
+  terminalCursorBlink: boolean;
   terminalFontFamily: string;
   terminalLetterSpacing: number;
   terminalFontSize: number;
@@ -132,6 +133,7 @@ const LEGACY_KEY_SHOW_HIDDEN_DIRS = "showHiddenDirectories";
 const KEY_TERMINAL_WEBGL_ENABLED = "terminalWebglEnabled";
 const KEY_TERMINAL_RENDERER_HIBERNATION_ENABLED =
   "terminalRendererHibernationEnabled";
+const KEY_TERMINAL_CURSOR_BLINK = "terminalCursorBlink";
 const KEY_TERMINAL_FONT_FAMILY = "terminalFontFamily";
 const KEY_TERMINAL_LETTER_SPACING = "terminalLetterSpacing";
 const KEY_TERMINAL_FONT_SIZE = "terminalFontSize";
@@ -196,6 +198,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   showHidden: false,
   terminalWebglEnabled: true,
   terminalRendererHibernationEnabled: true,
+  terminalCursorBlink: false,
   terminalFontFamily: "",
   terminalLetterSpacing: 0,
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,
@@ -319,6 +322,9 @@ export async function loadPreferences(): Promise<Preferences> {
     terminalRendererHibernationEnabled:
       get<boolean>(KEY_TERMINAL_RENDERER_HIBERNATION_ENABLED) ??
       DEFAULT_PREFERENCES.terminalRendererHibernationEnabled,
+    terminalCursorBlink:
+      get<boolean>(KEY_TERMINAL_CURSOR_BLINK) ??
+      DEFAULT_PREFERENCES.terminalCursorBlink,
     terminalFontFamily:
       get<string>(KEY_TERMINAL_FONT_FAMILY) ??
       DEFAULT_PREFERENCES.terminalFontFamily,
@@ -517,6 +523,10 @@ export async function setTerminalRendererHibernationEnabled(
   await writePref(KEY_TERMINAL_RENDERER_HIBERNATION_ENABLED, value);
 }
 
+export async function setTerminalCursorBlink(value: boolean): Promise<void> {
+  await writePref(KEY_TERMINAL_CURSOR_BLINK, value);
+}
+
 export async function setTerminalFontFamily(value: string): Promise<void> {
   await writePref(KEY_TERMINAL_FONT_FAMILY, value.trim());
 }
@@ -651,6 +661,7 @@ export async function onPreferencesChange(
     [KEY_TERMINAL_WEBGL_ENABLED]: "terminalWebglEnabled",
     [KEY_TERMINAL_RENDERER_HIBERNATION_ENABLED]:
       "terminalRendererHibernationEnabled",
+    [KEY_TERMINAL_CURSOR_BLINK]: "terminalCursorBlink",
     [KEY_TERMINAL_FONT_FAMILY]: "terminalFontFamily",
     [KEY_TERMINAL_LETTER_SPACING]: "terminalLetterSpacing",
     [KEY_TERMINAL_FONT_SIZE]: "terminalFontSize",
