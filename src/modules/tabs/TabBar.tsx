@@ -6,10 +6,10 @@ import {
   GitCompareIcon,
   Globe02Icon,
   IncognitoIcon,
-  Notification01Icon,
-  NotificationOff01Icon,
   PencilEdit02Icon,
   PlusSignIcon,
+  VolumeHighIcon,
+  VolumeMute01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
@@ -30,11 +30,12 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtShortcut, MOD_KEY } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { AgentStatusMark } from "@/modules/agents";
 import { AgentIcon } from "@/modules/agents/lib/agentIcon";
-import { agentStatusView } from "@/modules/agents/lib/agentStatus";
+import { isAttentionWorthy } from "@/modules/agents/lib/agentStatus";
 import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { TabAgentStateMark, tabAgentStateLabel } from "./TabAgentStateMark";
+import { tabAgentSoundMenu } from "./tabAgentSoundMenu";
 import { labelFor } from "./lib/tabLabel";
 import type { EditorTab, Tab } from "./lib/useTabs";
 
@@ -121,6 +122,12 @@ export function TabBar({
                   : undefined;
               const hasAgentStatus =
                 !!agentSummary && agentSummary.kind !== "none";
+              const hasAgentAttention =
+                hasAgentStatus && isAttentionWorthy(agentSummary.status);
+              const soundMenu =
+                t.kind === "terminal" && onToggleAgentTabSound
+                  ? tabAgentSoundMenu(agentSummary)
+                  : null;
 
               // While renaming, render a non-button cell so the <input> is not
               // nested inside the trigger <button> (invalid HTML, and WebKit
@@ -165,11 +172,13 @@ export function TabBar({
                     if (e.button === 1) e.preventDefault();
                   }}
                   className={cn(
-                    "group h-7 shrink-0 gap-1.5 rounded-md text-xs transition-colors hover:text-foreground/80 justify-between",
+                    "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs transition-colors hover:text-foreground/80 justify-between",
                     isActive
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground",
                     hasAgentStatus && !compact && "min-w-[9rem] max-w-[14rem]",
+                    hasAgentAttention &&
+                      "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-px before:rounded-full before:bg-muted-foreground/55",
                     compact
                       ? "px-1.5!"
                       : tabs.length === 1
@@ -202,11 +211,6 @@ export function TabBar({
                   </span>
                   <span className="flex shrink-0 items-center gap-0.5">
                     <TabAgentStatus summary={agentSummary} />
-                    <TabAgentSoundButton
-                      summary={agentSummary}
-                      tabId={t.id}
-                      onToggle={onToggleAgentTabSound}
-                    />
                     {tabs.length > 1 && (
                       <span
                         role="button"
@@ -245,6 +249,22 @@ export function TabBar({
                       />
                       <span className="flex-1">Rename</span>
                     </ContextMenuItem>
+                    {soundMenu ? (
+                      <ContextMenuItem
+                        onSelect={() => onToggleAgentTabSound?.(t.id)}
+                      >
+                        <HugeiconsIcon
+                          icon={
+                            soundMenu.icon === "unmute"
+                              ? VolumeHighIcon
+                              : VolumeMute01Icon
+                          }
+                          size={14}
+                          strokeWidth={1.75}
+                        />
+                        <span className="flex-1">{soundMenu.label}</span>
+                      </ContextMenuItem>
+                    ) : null}
                     {tabs.length > 1 && (
                       <>
                         <ContextMenuSeparator />
@@ -423,72 +443,15 @@ function TabIcon({
 
 function TabAgentStatus({ summary }: { summary?: TerminalTabAgentSummary }) {
   if (!summary || summary.kind === "none") return null;
-  const view = agentStatusView(summary.status);
   return (
     <span
-      title={view.label}
+      title={tabAgentStateLabel(summary.status)}
       className={cn(
         "relative flex h-3 w-3 shrink-0 items-center justify-center",
-        view.mark === "dots" && "w-4",
-        summary.unread &&
-          "after:absolute after:-top-0.5 after:-right-0.5 after:size-1 after:rounded-full after:bg-primary",
+        summary.status === "working" && "w-4",
       )}
     >
-      <AgentStatusMark view={view} />
-    </span>
-  );
-}
-
-function TabAgentSoundButton({
-  summary,
-  tabId,
-  onToggle,
-}: {
-  summary?: TerminalTabAgentSummary;
-  tabId: number;
-  onToggle?: (tabId: number) => void;
-}) {
-  if (!summary || (summary.kind === "none" && !summary.muted)) return null;
-  const label = summary.soundDisabledGlobally
-    ? "Sound disabled globally"
-    : summary.muted
-      ? "Unmute sound"
-      : "Mute sound";
-
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: tab trigger owns button semantics.
-    <span
-      role="button"
-      tabIndex={0}
-      aria-label={label}
-      title={label}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-      }}
-      onMouseDown={(e) => {
-        e.stopPropagation();
-      }}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onToggle?.(tabId);
-      }}
-      onKeyDown={(e) => {
-        if (e.key !== "Enter" && e.key !== " ") return;
-        e.preventDefault();
-        e.stopPropagation();
-        onToggle?.(tabId);
-      }}
-      className={cn(
-        "flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 opacity-70 transition-colors hover:bg-accent hover:text-foreground group-hover:opacity-100",
-        summary.muted && "text-primary opacity-100",
-      )}
-    >
-      <HugeiconsIcon
-        icon={summary.muted ? NotificationOff01Icon : Notification01Icon}
-        size={11}
-        strokeWidth={1.8}
-      />
+      <TabAgentStateMark status={summary.status} />
     </span>
   );
 }
