@@ -34,7 +34,7 @@ export function terminalTabAgentSummary({
     if (byPriority !== 0) return byPriority;
     return b.lastActivityAt - a.lastActivityAt;
   });
-  const top = sorted[0];
+  const top = sorted.find((row) => row.status === "working") ?? sorted[0];
   const providers = [...new Set(tabRows.map((row) => row.agent))];
   const unread = tabRows.some((row) => row.unread);
 

@@ -13,10 +13,17 @@ describe("agentStatus", () => {
     });
     expect(agentStatusView("needs-input")).toMatchObject({
       label: "needs input",
+      mark: "permission",
       tone: "primary",
     });
-    expect(agentStatusView("idle")).toMatchObject({ label: "idle" });
-    expect(agentStatusView("error")).toMatchObject({ label: "failed" });
+    expect(agentStatusView("idle")).toMatchObject({
+      label: "finished",
+      mark: "check",
+    });
+    expect(agentStatusView("error")).toMatchObject({
+      label: "failed",
+      mark: "error",
+    });
   });
 
   it("limits attention-worthy states", () => {

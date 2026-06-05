@@ -1,3 +1,9 @@
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  WavingHand01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import type { AgentStatusView } from "@/modules/agents/lib/agentStatus";
 
@@ -11,6 +17,15 @@ const toneClass = {
   primary: "text-primary",
   destructive: "text-destructive",
 } as const;
+
+const iconByMark: Record<
+  Exclude<AgentStatusView["mark"], "dots">,
+  IconSvgElement
+> = {
+  check: CheckmarkCircle02Icon,
+  permission: WavingHand01Icon,
+  error: AlertCircleIcon,
+};
 
 export function AgentStatusMark({ view, className }: Props) {
   if (view.mark === "dots") {
@@ -33,14 +48,18 @@ export function AgentStatusMark({ view, className }: Props) {
   return (
     <span
       aria-hidden="true"
+      data-agent-status-mark={view.mark}
       className={cn(
-        "size-2 shrink-0 rounded-full border border-current",
+        "flex size-3.5 shrink-0 items-center justify-center",
         toneClass[view.tone],
-        view.mark === "ring"
-          ? "bg-current ring-2 ring-current/20"
-          : "bg-transparent",
         className,
       )}
-    />
+    >
+      <HugeiconsIcon
+        icon={iconByMark[view.mark]}
+        size={13}
+        strokeWidth={1.85}
+      />
+    </span>
   );
 }
