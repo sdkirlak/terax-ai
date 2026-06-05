@@ -91,6 +91,7 @@ export type Preferences = {
   agentAudibleAlerts: boolean;
   agentAlertVolume: number;
   agentAlertWhenActive: boolean;
+  agentAlertSoundOnlyForActiveTab: boolean;
   agentWakeLockEnabled: boolean;
   shortcuts: Record<ShortcutId, KeyBinding[]>;
   editorAutoSave: boolean;
@@ -141,6 +142,8 @@ const KEY_AGENT_NOTIFICATIONS = "agentNotifications";
 const KEY_AGENT_AUDIBLE_ALERTS = "agentAudibleAlerts";
 const KEY_AGENT_ALERT_VOLUME = "agentAlertVolume";
 const KEY_AGENT_ALERT_WHEN_ACTIVE = "agentAlertWhenActive";
+const KEY_AGENT_ALERT_SOUND_ONLY_FOR_ACTIVE_TAB =
+  "agentAlertSoundOnlyForActiveTab";
 const KEY_AGENT_WAKE_LOCK_ENABLED = "agentWakeLockEnabled";
 const KEY_SHORTCUTS = "shortcuts";
 const KEY_EDITOR_AUTO_SAVE = "editorAutoSave";
@@ -203,6 +206,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   agentAudibleAlerts: true,
   agentAlertVolume: 0.5,
   agentAlertWhenActive: false,
+  agentAlertSoundOnlyForActiveTab: false,
   agentWakeLockEnabled: false,
   shortcuts: {} as Record<ShortcutId, KeyBinding[]>,
   editorAutoSave: false,
@@ -345,6 +349,9 @@ export async function loadPreferences(): Promise<Preferences> {
     agentAlertWhenActive:
       get<boolean>(KEY_AGENT_ALERT_WHEN_ACTIVE) ??
       DEFAULT_PREFERENCES.agentAlertWhenActive,
+    agentAlertSoundOnlyForActiveTab:
+      get<boolean>(KEY_AGENT_ALERT_SOUND_ONLY_FOR_ACTIVE_TAB) ??
+      DEFAULT_PREFERENCES.agentAlertSoundOnlyForActiveTab,
     agentWakeLockEnabled:
       get<boolean>(KEY_AGENT_WAKE_LOCK_ENABLED) ??
       DEFAULT_PREFERENCES.agentWakeLockEnabled,
@@ -585,6 +592,12 @@ export async function setAgentAlertWhenActive(value: boolean): Promise<void> {
   await writePref(KEY_AGENT_ALERT_WHEN_ACTIVE, value);
 }
 
+export async function setAgentAlertSoundOnlyForActiveTab(
+  value: boolean,
+): Promise<void> {
+  await writePref(KEY_AGENT_ALERT_SOUND_ONLY_FOR_ACTIVE_TAB, value);
+}
+
 export async function setAgentWakeLockEnabled(value: boolean): Promise<void> {
   await writePref(KEY_AGENT_WAKE_LOCK_ENABLED, value);
 }
@@ -648,6 +661,8 @@ export async function onPreferencesChange(
     [KEY_AGENT_AUDIBLE_ALERTS]: "agentAudibleAlerts",
     [KEY_AGENT_ALERT_VOLUME]: "agentAlertVolume",
     [KEY_AGENT_ALERT_WHEN_ACTIVE]: "agentAlertWhenActive",
+    [KEY_AGENT_ALERT_SOUND_ONLY_FOR_ACTIVE_TAB]:
+      "agentAlertSoundOnlyForActiveTab",
     [KEY_AGENT_WAKE_LOCK_ENABLED]: "agentWakeLockEnabled",
     [KEY_SHORTCUTS]: "shortcuts",
     [KEY_EDITOR_AUTO_SAVE]: "editorAutoSave",

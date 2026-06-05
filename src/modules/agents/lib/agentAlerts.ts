@@ -6,6 +6,7 @@ export type AgentAlertDecisionArgs = {
   appFocused: boolean;
   exactAgentVisible: boolean;
   alertWhenActive: boolean;
+  soundOnlyForActiveTab: boolean;
   globalSound: boolean;
   tabMuted: boolean;
 };
@@ -23,8 +24,10 @@ export function agentAlertDecision(
   const attention = isAttentionWorthy(args.status);
   const exactActive = args.exactAgentVisible;
   const mayVisualAlert = attention && !exactActive;
-  const maySound =
-    attention && (!exactActive || args.alertWhenActive) && args.globalSound;
+  const activeSound = exactActive
+    ? args.alertWhenActive || args.soundOnlyForActiveTab
+    : !args.soundOnlyForActiveTab;
+  const maySound = attention && activeSound && args.globalSound;
   return {
     unread: mayVisualAlert,
     toast: mayVisualAlert && args.appFocused,

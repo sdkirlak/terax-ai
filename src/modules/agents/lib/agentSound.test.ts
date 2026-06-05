@@ -179,7 +179,7 @@ describe("agentSound", () => {
     expect(resume).toHaveBeenCalledTimes(1);
   });
 
-  it("plays a longer browser alert", () => {
+  it("plays a short warm phone-like browser alert", () => {
     const stop = vi.fn();
     vi.stubGlobal("window", {
       AudioContext: vi.fn(function AudioContextMock() {
@@ -209,10 +209,63 @@ describe("agentSound", () => {
 
     playAgentAlertSound();
 
-    expect(stop).toHaveBeenCalledWith(1.38);
+    expect(
+      stop.mock.calls.some(([time]) => Math.abs(Number(time) - 1.44) < 0.001),
+    ).toBe(true);
   });
 
-  it("maps volume to a louder browser gain envelope", () => {
+  it("uses lower smooth rise tones instead of piercing alert tones", () => {
+    const oscillators: Array<{
+      addEventListener: ReturnType<typeof vi.fn>;
+      connect: ReturnType<typeof vi.fn>;
+      frequency: { value: number };
+      start: ReturnType<typeof vi.fn>;
+      stop: ReturnType<typeof vi.fn>;
+      type: OscillatorType;
+    }> = [];
+    vi.stubGlobal("window", {
+      AudioContext: vi.fn(function AudioContextMock() {
+        return {
+          close: vi.fn(() => Promise.resolve()),
+          createGain: () => ({
+            connect: vi.fn(),
+            gain: {
+              cancelScheduledValues: vi.fn(),
+              linearRampToValueAtTime: vi.fn(),
+              setValueAtTime: vi.fn(),
+            },
+          }),
+          createOscillator: () => {
+            const oscillator = {
+              addEventListener: vi.fn(),
+              connect: vi.fn(),
+              frequency: { value: 0 },
+              start: vi.fn(),
+              stop: vi.fn(),
+              type: "sine" as OscillatorType,
+            };
+            oscillators.push(oscillator);
+            return oscillator;
+          },
+          currentTime: 2,
+          destination: {},
+        };
+      }),
+    });
+
+    playAgentAlertSound();
+
+    expect(oscillators).toHaveLength(2);
+    expect(oscillators.map((osc) => osc.frequency.value)).toEqual([
+      523.25, 698.46,
+    ]);
+    expect(oscillators.every((osc) => osc.frequency.value < 900)).toBe(true);
+    expect(oscillators.map((osc) => osc.type)).toEqual(["sine", "sine"]);
+    expect(oscillators[0]?.start).toHaveBeenCalledWith(2);
+    expect(oscillators[1]?.start).toHaveBeenCalledWith(2.13);
+  });
+
+  it("maps volume to a smooth browser gain envelope", () => {
     const setValueAtTime = vi.fn();
     const linearRampToValueAtTime = vi.fn();
     vi.stubGlobal("window", {
@@ -244,6 +297,13 @@ describe("agentSound", () => {
     playAgentAlertSound(0.25);
 
     expect(setValueAtTime).toHaveBeenCalledWith(0.0001, 0);
-    expect(linearRampToValueAtTime).toHaveBeenCalledWith(0.055, 0.025);
+    expect(
+      linearRampToValueAtTime.mock.calls.some(
+        ([value, time]) =>
+          Math.abs(Number(value) - 0.044) < 0.001 &&
+          Math.abs(Number(time) - 0.168) < 0.001,
+      ),
+    ).toBe(true);
+    expect(linearRampToValueAtTime).toHaveBeenCalledWith(0.0001, 0.44);
   });
 });

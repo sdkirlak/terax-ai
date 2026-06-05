@@ -9,4 +9,8 @@ describe("DEFAULT_PREFERENCES", () => {
   it("disables agent wake lock by default", () => {
     expect(DEFAULT_PREFERENCES.agentWakeLockEnabled).toBe(false);
   });
+
+  it("does not restrict agent sound to the active tab by default", () => {
+    expect(DEFAULT_PREFERENCES.agentAlertSoundOnlyForActiveTab).toBe(false);
+  });
 });

@@ -12,6 +12,7 @@ describe("routeAgentStatusEvent", () => {
       focused: true,
       exactAgentVisible: false,
       alertWhenActive: false,
+      soundOnlyForActiveTab: false,
       globalSound: true,
       soundVolume: 0.42,
       tabMuted: false,
@@ -41,6 +42,7 @@ describe("routeAgentStatusEvent", () => {
       focused: true,
       exactAgentVisible: true,
       alertWhenActive: false,
+      soundOnlyForActiveTab: false,
       globalSound: true,
       soundVolume: 0.5,
       tabMuted: false,
@@ -70,6 +72,7 @@ describe("routeAgentStatusEvent", () => {
       focused: true,
       exactAgentVisible: true,
       alertWhenActive: true,
+      soundOnlyForActiveTab: false,
       globalSound: true,
       soundVolume: 0.5,
       tabMuted: false,
@@ -99,6 +102,7 @@ describe("routeAgentStatusEvent", () => {
       focused: true,
       exactAgentVisible: true,
       alertWhenActive: true,
+      soundOnlyForActiveTab: false,
       globalSound: true,
       soundVolume: 1,
       tabMuted: false,
@@ -116,5 +120,35 @@ describe("routeAgentStatusEvent", () => {
     expect(sound).toHaveBeenCalledWith(1);
     expect(osNotify).not.toHaveBeenCalled();
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("keeps focused other-tab notifications visual but silent in focus sound mode", () => {
+    const osNotify = vi.fn();
+    const toast = vi.fn();
+    const sound = vi.fn();
+
+    const decision = routeAgentStatusEvent({
+      status: "needs-input",
+      focused: true,
+      exactAgentVisible: false,
+      alertWhenActive: false,
+      soundOnlyForActiveTab: true,
+      globalSound: true,
+      soundVolume: 0.5,
+      tabMuted: false,
+      osNotify,
+      toast,
+      sound,
+    });
+
+    expect(decision).toEqual({
+      unread: true,
+      toast: true,
+      osNotify: false,
+      playSound: false,
+    });
+    expect(toast).toHaveBeenCalledOnce();
+    expect(sound).not.toHaveBeenCalled();
+    expect(osNotify).not.toHaveBeenCalled();
   });
 });
