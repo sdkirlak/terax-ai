@@ -48,6 +48,24 @@ describe("agentSound", () => {
     expect(player).toHaveBeenCalledTimes(2);
   });
 
+  it("collapses alerts while the previous browser chime is still releasing", () => {
+    vi.useFakeTimers();
+    const player = vi.fn();
+    setAgentSoundPlayerForTest(player);
+
+    vi.setSystemTime(1_000);
+    playAgentAlertSound();
+    vi.setSystemTime(1_400);
+    playAgentAlertSound();
+
+    expect(player).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(1_700);
+    playAgentAlertSound();
+
+    expect(player).toHaveBeenCalledTimes(2);
+  });
+
   it("does not throw without window", () => {
     vi.stubGlobal("window", undefined);
     expect(() => playAgentAlertSound()).not.toThrow();
@@ -121,8 +139,9 @@ describe("agentSound", () => {
 
     playAgentAlertSound();
     handlers.ended?.();
-    vi.runOnlyPendingTimers();
 
+    expect(close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
     expect(close).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
