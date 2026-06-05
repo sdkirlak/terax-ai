@@ -2,10 +2,13 @@ import {
   ComputerIcon,
   Moon02Icon,
   Sun03Icon,
+  VolumeHighIcon,
+  VolumeMute01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -28,6 +31,7 @@ import type { ThemePref } from "@/modules/settings/store";
 import {
   setAgentAlertVolume,
   setAgentAlertWhenActive,
+  setAgentAlertSoundOnlyForActiveTab,
   setAgentAudibleAlerts,
   setAgentNotifications,
   setAgentWakeLockEnabled,
@@ -96,6 +100,9 @@ export function GeneralSection() {
   const agentAlertVolume = usePreferencesStore((s) => s.agentAlertVolume);
   const agentAlertWhenActive = usePreferencesStore(
     (s) => s.agentAlertWhenActive,
+  );
+  const agentAlertSoundOnlyForActiveTab = usePreferencesStore(
+    (s) => s.agentAlertSoundOnlyForActiveTab,
   );
   const agentWakeLockEnabled = usePreferencesStore(
     (s) => s.agentWakeLockEnabled,
@@ -366,7 +373,38 @@ export function GeneralSection() {
           title="Agent alert volume"
           description="Adjust the volume of audible agent status alerts."
         >
-          <div className="flex w-40 items-center gap-3">
+          <div className="flex w-48 items-center gap-2">
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={
+                      agentAudibleAlerts
+                        ? "Mute agent alert sound"
+                        : "Unmute agent alert sound"
+                    }
+                    aria-pressed={!agentAudibleAlerts}
+                    onClick={() =>
+                      void setAgentAudibleAlerts(!agentAudibleAlerts)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={
+                        agentAudibleAlerts ? VolumeHighIcon : VolumeMute01Icon
+                      }
+                      size={13}
+                      strokeWidth={1.75}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-[11px]">
+                  {agentAudibleAlerts ? "Mute alerts" : "Unmute alerts"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Slider
               value={[agentAlertVolume]}
               min={0}
@@ -387,6 +425,16 @@ export function GeneralSection() {
           <Switch
             checked={agentAlertWhenActive}
             onCheckedChange={(v) => void setAgentAlertWhenActive(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Focus sound on active tab"
+          description="Keep background agent tabs visually notifying, but only play audio for the agent tab you are viewing."
+        >
+          <Switch
+            checked={agentAlertSoundOnlyForActiveTab}
+            disabled={!agentAudibleAlerts}
+            onCheckedChange={(v) => void setAgentAlertSoundOnlyForActiveTab(v)}
           />
         </SettingRow>
         <SettingRow

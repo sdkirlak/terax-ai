@@ -13,14 +13,26 @@ type ToneGain = GainNode["gain"] & {
   value: number;
 };
 
+type ChimeNote = {
+  duration: number;
+  frequency: number;
+  peak: number;
+  start: number;
+  type: OscillatorType;
+};
+
 let injectedPlayer: SoundPlayer | null = null;
 let lastPlayedAt: number | null = null;
 
 const MIN_SOUND_INTERVAL_MS = 300;
-const ALERT_DURATION_SECONDS = 0.38;
-const ALERT_ATTACK_SECONDS = 0.025;
-const ALERT_RELEASE_SECONDS = 0.12;
+const ALERT_DURATION_SECONDS = 0.56;
+const NOTE_ATTACK_SECONDS = 0.038;
+const NOTE_RELEASE_SECONDS = 0.18;
 const MAX_GAIN = 0.22;
+const PHONE_CHIME_NOTES: readonly ChimeNote[] = [
+  { type: "sine", frequency: 523.25, start: 0, duration: 0.2, peak: 0.66 },
+  { type: "sine", frequency: 698.46, start: 0.13, duration: 0.31, peak: 0.8 },
+];
 
 export function setAgentSoundPlayerForTest(player: SoundPlayer | null): void {
   injectedPlayer = player;
@@ -44,7 +56,15 @@ function scheduleGainEnvelope(
   gain: ToneGain,
   now: number,
   peak: number,
+  startOffset: number,
+  duration: number,
 ): void {
+  const start = now + startOffset;
+  const end = start + duration;
+  const attackEnd = start + Math.min(NOTE_ATTACK_SECONDS, duration * 0.3);
+  const releaseStart =
+    start + Math.max(NOTE_ATTACK_SECONDS, duration - NOTE_RELEASE_SECONDS);
+
   if (
     typeof gain.cancelScheduledValues === "function" &&
     typeof gain.setValueAtTime === "function" &&
@@ -52,12 +72,10 @@ function scheduleGainEnvelope(
   ) {
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(0.0001, now);
-    gain.linearRampToValueAtTime(peak, now + ALERT_ATTACK_SECONDS);
-    gain.linearRampToValueAtTime(
-      Math.max(peak * 0.72, 0.0001),
-      now + ALERT_DURATION_SECONDS - ALERT_RELEASE_SECONDS,
-    );
-    gain.linearRampToValueAtTime(0.0001, now + ALERT_DURATION_SECONDS);
+    if (start > now) gain.setValueAtTime(0.0001, start);
+    gain.linearRampToValueAtTime(peak, attackEnd);
+    gain.linearRampToValueAtTime(Math.max(peak * 0.82, 0.0001), releaseStart);
+    gain.linearRampToValueAtTime(0.0001, end);
     return;
   }
 
@@ -109,22 +127,23 @@ export function playAgentAlertSound(volume = 0.5): void {
     if (!AudioContextCtor) return;
     ctx = new AudioContextCtor();
     if (ctx.state === "suspended") void ctx.resume();
-    const gain = ctx.createGain();
-    const primary = ctx.createOscillator();
-    const accent = ctx.createOscillator();
     const now = ctx.currentTime;
-    scheduleGainEnvelope(gain.gain, now, MAX_GAIN * normalizedVolume);
-    configureOscillator(primary, "triangle", 880);
-    configureOscillator(accent, "sine", 1320);
-    primary.connect(gain);
-    accent.connect(gain);
-    gain.connect(ctx.destination);
-    primary.start(now);
-    accent.start(now);
-    primary.stop(now + ALERT_DURATION_SECONDS);
-    accent.stop(now + ALERT_DURATION_SECONDS);
-    cleanupTimer = setTimeout(cleanup, 1_000);
-    primary.addEventListener("ended", cleanup);
+    const oscillators: ToneOscillator[] = [];
+    for (const note of PHONE_CHIME_NOTES) {
+      const gain = ctx.createGain();
+      const oscillator = ctx.createOscillator();
+      const start = now + note.start;
+      const peak = MAX_GAIN * normalizedVolume * note.peak;
+      scheduleGainEnvelope(gain.gain, now, peak, note.start, note.duration);
+      configureOscillator(oscillator, note.type, note.frequency);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(start);
+      oscillator.stop(start + note.duration);
+      oscillators.push(oscillator);
+    }
+    cleanupTimer = setTimeout(cleanup, (ALERT_DURATION_SECONDS + 0.68) * 1_000);
+    oscillators[oscillators.length - 1]?.addEventListener("ended", cleanup);
   } catch {
     cleanup();
   }

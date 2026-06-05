@@ -13,6 +13,7 @@ type RouteAgentStatusEventArgs = {
   focused: boolean;
   exactAgentVisible: boolean;
   alertWhenActive: boolean;
+  soundOnlyForActiveTab: boolean;
   globalSound: boolean;
   soundVolume: number;
   tabMuted: boolean;
@@ -41,6 +42,7 @@ export function routeAgentStatusEvent({
   focused,
   exactAgentVisible,
   alertWhenActive,
+  soundOnlyForActiveTab,
   globalSound,
   soundVolume,
   tabMuted,
@@ -53,6 +55,7 @@ export function routeAgentStatusEvent({
     appFocused: focused,
     exactAgentVisible,
     alertWhenActive,
+    soundOnlyForActiveTab,
     globalSound,
     tabMuted,
   });
@@ -82,6 +85,7 @@ export function routeAgentStatus({
     focused,
     exactAgentVisible,
     alertWhenActive: preferences.agentAlertWhenActive,
+    soundOnlyForActiveTab: preferences.agentAlertSoundOnlyForActiveTab,
     globalSound: preferences.agentAudibleAlerts,
     soundVolume: preferences.agentAlertVolume,
     tabMuted,
