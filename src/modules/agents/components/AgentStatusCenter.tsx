@@ -33,6 +33,28 @@ function rowSecondary(row: AgentRow): string {
   return row.source === "local" ? "Terax agent" : "Terminal agent";
 }
 
+export function agentRowButtonClassName(unread: boolean): string {
+  return cn(
+    "relative flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent",
+    "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:rounded-full",
+    unread
+      ? "bg-accent/35 before:w-[3px] before:bg-primary/70"
+      : "before:w-px before:bg-transparent",
+  );
+}
+
+export function agentStatusHeaderMode({
+  unreadCount,
+  activeCount,
+}: {
+  unreadCount: number;
+  activeCount: number;
+}): "read-all" | "active-count" | "empty" {
+  if (unreadCount > 0) return "read-all";
+  if (activeCount > 0) return "active-count";
+  return "empty";
+}
+
 function AgentRowButton({
   row,
   onClick,
@@ -47,11 +69,8 @@ function AgentRowButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent"
+      className={agentRowButtonClassName(row.unread)}
     >
-      {row.unread ? (
-        <span className="absolute left-1 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-primary/70" />
-      ) : null}
       <AgentIcon
         agent={row.agent}
         size={17}
@@ -95,6 +114,10 @@ export function AgentStatusCenter({ onActivate, onActivateLocal }: Props) {
   const badge = agentBadgeState(rows);
   const activeCount = rows.length;
   const empty = activeCount === 0;
+  const headerMode = agentStatusHeaderMode({
+    unreadCount: badge.unreadCount,
+    activeCount,
+  });
 
   const activateRow = (row: AgentRow) => {
     const store = useAgentStore.getState();
@@ -106,6 +129,10 @@ export function AgentStatusCenter({ onActivate, onActivateLocal }: Props) {
       onActivate(row.tabId, row.leafId);
     }
     setOpen(false);
+  };
+
+  const clearAllUnread = () => {
+    useAgentStore.getState().clearAllUnread();
   };
 
   return (
@@ -126,8 +153,6 @@ export function AgentStatusCenter({ onActivate, onActivateLocal }: Props) {
             <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-semibold leading-none text-primary-foreground">
               {badge.unreadCount > 9 ? "9+" : badge.unreadCount}
             </span>
-          ) : badge.showStatusDot ? (
-            <span className="absolute top-0 right-0 size-2 rounded-full bg-primary/70 ring-2 ring-background" />
           ) : null}
         </Button>
       </PopoverTrigger>
@@ -140,7 +165,17 @@ export function AgentStatusCenter({ onActivate, onActivateLocal }: Props) {
           <span className="text-[13px] font-medium text-foreground">
             Agents
           </span>
-          {activeCount > 0 ? (
+          {headerMode === "read-all" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearAllUnread}
+              className="ml-auto h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              Read all
+            </Button>
+          ) : headerMode === "active-count" ? (
             <span className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
               {activeCount} active
             </span>

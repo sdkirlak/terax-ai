@@ -188,4 +188,38 @@ describe("agentStore", () => {
     store.clearVisibleTerminalUnread({ focused: true, activeLeafId: 1 });
     expect(useAgentStore.getState().rows.terminal[1]?.unread).toBe(false);
   });
+
+  it("clears all unread rows without changing statuses", () => {
+    const store = useAgentStore.getState();
+    store.startTerminal(1, 10, "codex", "repo");
+    store.startTerminal(2, 20, "claude", "docs");
+    store.setTerminalStatus(1, "idle", { unread: true });
+    store.setTerminalStatus(2, "needs-input", { unread: true });
+    store.setLocalAgent({
+      id: "local:terax",
+      source: "local",
+      agent: "Terax",
+      label: "Terax",
+      status: "error",
+      unread: true,
+      startedAt: 1_000,
+      lastActivityAt: 1_000,
+      attentionSince: null,
+    });
+
+    store.clearAllUnread();
+
+    expect(useAgentStore.getState().rows.terminal[1]).toMatchObject({
+      status: "idle",
+      unread: false,
+    });
+    expect(useAgentStore.getState().rows.terminal[2]).toMatchObject({
+      status: "needs-input",
+      unread: false,
+    });
+    expect(useAgentStore.getState().rows.local).toMatchObject({
+      status: "error",
+      unread: false,
+    });
+  });
 });

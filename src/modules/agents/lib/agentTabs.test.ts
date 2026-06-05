@@ -63,4 +63,30 @@ describe("terminalTabAgentSummary", () => {
       }),
     ).toMatchObject({ status: "needs-input", muted: true });
   });
+
+  it("keeps working as the tab glyph while preserving unread finished events", () => {
+    expect(
+      terminalTabAgentSummary({
+        tabId: 1,
+        rows: [
+          row({
+            id: "terminal:1",
+            leafId: 1,
+            status: "idle",
+            unread: true,
+            lastActivityAt: 100,
+          }),
+          row({
+            id: "terminal:2",
+            leafId: 2,
+            status: "working",
+            unread: false,
+            lastActivityAt: 10,
+          }),
+        ],
+        mutedTabIds: new Set(),
+        globalSound: true,
+      }),
+    ).toMatchObject({ status: "working", unread: true });
+  });
 });

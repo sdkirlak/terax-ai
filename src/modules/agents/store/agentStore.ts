@@ -29,6 +29,7 @@ type AgentStoreState = {
     focused: boolean;
     activeLeafId: number | null;
   }) => void;
+  clearAllUnread: () => void;
   exitTerminal: (leafId: number) => void;
   setLocalAgent: (row: LocalAgentState) => void;
   clearLocalUnread: () => void;
@@ -173,6 +174,20 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
           },
         },
       };
+    }),
+
+  clearAllUnread: () =>
+    set((state) => {
+      const terminal = Object.entries(state.rows.terminal).reduce<
+        AgentStoreState["rows"]["terminal"]
+      >((next, [leafId, row]) => {
+        next[Number(leafId)] = row.unread ? { ...row, unread: false } : row;
+        return next;
+      }, {});
+      const local = state.rows.local?.unread
+        ? { ...state.rows.local, unread: false }
+        : state.rows.local;
+      return { rows: { terminal, local } };
     }),
 
   exitTerminal: (leafId) =>

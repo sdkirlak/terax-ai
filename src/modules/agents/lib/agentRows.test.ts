@@ -62,14 +62,12 @@ describe("agentRows", () => {
     ]);
   });
 
-  it("counts unread live rows and shows a dot for attention-worthy read rows", () => {
+  it("counts unread rows without adding a read-agent status dot", () => {
     expect(agentBadgeState([row({ unread: true })])).toEqual({
       unreadCount: 1,
-      showStatusDot: false,
     });
     expect(agentBadgeState([row({ status: "idle", unread: false })])).toEqual({
       unreadCount: 0,
-      showStatusDot: true,
     });
   });
 });

@@ -31,7 +31,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtShortcut, MOD_KEY } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/modules/agents/lib/agentIcon";
-import { isAttentionWorthy } from "@/modules/agents/lib/agentStatus";
 import type { TerminalTabAgentSummary } from "@/modules/agents/lib/types";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { TabAgentStateMark, tabAgentStateLabel } from "./TabAgentStateMark";
@@ -122,8 +121,7 @@ export function TabBar({
                   : undefined;
               const hasAgentStatus =
                 !!agentSummary && agentSummary.kind !== "none";
-              const hasAgentAttention =
-                hasAgentStatus && isAttentionWorthy(agentSummary.status);
+              const hasAgentUnread = hasAgentStatus && agentSummary.unread;
               const soundMenu =
                 t.kind === "terminal" && onToggleAgentTabSound
                   ? tabAgentSoundMenu(agentSummary)
@@ -177,8 +175,12 @@ export function TabBar({
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground",
                     hasAgentStatus && !compact && "min-w-[9rem] max-w-[14rem]",
-                    hasAgentAttention &&
-                      "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-px before:rounded-full before:bg-muted-foreground/55",
+                    hasAgentStatus &&
+                      "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:rounded-full",
+                    hasAgentStatus &&
+                      (hasAgentUnread
+                        ? "before:w-[3px] before:bg-primary/70"
+                        : "before:w-px before:bg-muted-foreground/35"),
                     compact
                       ? "px-1.5!"
                       : tabs.length === 1
@@ -442,14 +444,13 @@ function TabIcon({
 }
 
 function TabAgentStatus({ summary }: { summary?: TerminalTabAgentSummary }) {
-  if (!summary || summary.kind === "none") return null;
+  if (!summary || summary.kind === "none" || summary.status !== "working") {
+    return null;
+  }
   return (
     <span
       title={tabAgentStateLabel(summary.status)}
-      className={cn(
-        "relative flex h-3 w-3 shrink-0 items-center justify-center",
-        summary.status === "working" && "w-4",
-      )}
+      className="relative flex h-3 w-4 shrink-0 items-center justify-center"
     >
       <TabAgentStateMark status={summary.status} />
     </span>

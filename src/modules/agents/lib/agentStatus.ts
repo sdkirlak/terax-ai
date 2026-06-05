@@ -1,6 +1,6 @@
 import type { AgentStatus } from "./types";
 
-export type AgentStatusMark = "dots" | "outline" | "ring";
+export type AgentStatusMark = "dots" | "check" | "permission" | "error";
 export type AgentStatusTone = "muted" | "primary" | "destructive";
 
 export type AgentStatusView = {
@@ -12,11 +12,11 @@ export type AgentStatusView = {
 export function agentStatusView(status: AgentStatus): AgentStatusView {
   switch (status) {
     case "needs-input":
-      return { label: "needs input", mark: "ring", tone: "primary" };
+      return { label: "needs input", mark: "permission", tone: "primary" };
     case "idle":
-      return { label: "idle", mark: "outline", tone: "primary" };
+      return { label: "finished", mark: "check", tone: "primary" };
     case "error":
-      return { label: "failed", mark: "outline", tone: "destructive" };
+      return { label: "failed", mark: "error", tone: "destructive" };
     case "working":
       return { label: "working", mark: "dots", tone: "muted" };
   }

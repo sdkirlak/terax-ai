@@ -13,20 +13,13 @@ describe("TabAgentStateMark", () => {
     expect(markup).toContain("[animation-delay:340ms]");
   });
 
-  it("renders idle, interaction, and error as distinct themed icon states", () => {
-    for (const [status, label] of [
-      ["idle", "idle"],
-      ["needs-input", "interaction needed"],
-      ["error", "failed"],
-    ] as const) {
+  it("renders no tab glyph for idle, interaction, and error", () => {
+    for (const status of ["idle", "needs-input", "error"] as const) {
       const markup = renderToStaticMarkup(
         <TabAgentStateMark status={status} />,
       );
 
-      expect(markup).toContain(`aria-label="${label}"`);
-      expect(markup).toContain(`data-agent-tab-state="${status}"`);
-      expect(markup).toContain("text-muted-foreground");
-      expect(markup).not.toContain("text-destructive");
+      expect(markup).toBe("");
     }
   });
 });
