@@ -21,11 +21,9 @@ type ChimeNote = {
   type: OscillatorType;
 };
 
-let injectedPlayer: SoundPlayer | null = null;
-let lastPlayedAt: number | null = null;
-
-const MIN_SOUND_INTERVAL_MS = 300;
 const ALERT_DURATION_SECONDS = 0.56;
+const MIN_SOUND_INTERVAL_MS = ALERT_DURATION_SECONDS * 1_000;
+const AUDIO_CONTEXT_CLOSE_GRACE_MS = 160;
 const NOTE_ATTACK_SECONDS = 0.038;
 const NOTE_RELEASE_SECONDS = 0.18;
 const MAX_GAIN = 0.22;
@@ -33,6 +31,9 @@ const PHONE_CHIME_NOTES: readonly ChimeNote[] = [
   { type: "sine", frequency: 523.25, start: 0, duration: 0.2, peak: 0.66 },
   { type: "sine", frequency: 698.46, start: 0.13, duration: 0.31, peak: 0.8 },
 ];
+
+let injectedPlayer: SoundPlayer | null = null;
+let lastPlayedAt: number | null = null;
 
 export function setAgentSoundPlayerForTest(player: SoundPlayer | null): void {
   injectedPlayer = player;
@@ -119,6 +120,10 @@ export function playAgentAlertSound(volume = 0.5): void {
       return;
     }
   };
+  const cleanupAfterTail = () => {
+    if (cleanupTimer !== null) clearTimeout(cleanupTimer);
+    cleanupTimer = setTimeout(cleanup, AUDIO_CONTEXT_CLOSE_GRACE_MS);
+  };
 
   try {
     const audioWindow = window as AudioWindow;
@@ -143,7 +148,10 @@ export function playAgentAlertSound(volume = 0.5): void {
       oscillators.push(oscillator);
     }
     cleanupTimer = setTimeout(cleanup, (ALERT_DURATION_SECONDS + 0.68) * 1_000);
-    oscillators[oscillators.length - 1]?.addEventListener("ended", cleanup);
+    oscillators[oscillators.length - 1]?.addEventListener(
+      "ended",
+      cleanupAfterTail,
+    );
   } catch {
     cleanup();
   }
