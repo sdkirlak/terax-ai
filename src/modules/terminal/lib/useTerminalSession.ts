@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ensureMonoFontsLoaded } from "@/lib/fonts";
+import { clearDisposedTerminalAgent } from "@/modules/agents/lib/terminalAgentLifecycle";
 import { useAgentStore } from "@/modules/agents/store/agentStore";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
@@ -439,6 +440,7 @@ export async function leafHasForegroundProcess(leafId: number): Promise<boolean>
 }
 
 export function disposeSession(leafId: number): void {
+  clearDisposedTerminalAgent(leafId);
   const s = sessions.get(leafId);
   if (!s) return;
   s.disposed = true;
