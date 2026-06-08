@@ -23,7 +23,7 @@ type ChimeNote = {
 
 const ALERT_DURATION_SECONDS = 0.56;
 const MIN_SOUND_INTERVAL_MS = ALERT_DURATION_SECONDS * 1_000;
-const AUDIO_CONTEXT_CLOSE_GRACE_MS = 160;
+const AUDIO_CONTEXT_IDLE_SUSPEND_MS = 4_000;
 const NOTE_ATTACK_SECONDS = 0.038;
 const NOTE_RELEASE_SECONDS = 0.18;
 const MAX_GAIN = 0.22;
@@ -34,10 +34,13 @@ const PHONE_CHIME_NOTES: readonly ChimeNote[] = [
 
 let injectedPlayer: SoundPlayer | null = null;
 let lastPlayedAt: number | null = null;
+let audioContext: AudioContext | null = null;
+let idleSuspendTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function setAgentSoundPlayerForTest(player: SoundPlayer | null): void {
   injectedPlayer = player;
   lastPlayedAt = null;
+  disposeAudioContext();
 }
 
 function clampVolume(volume: number): number {
@@ -92,6 +95,48 @@ function configureOscillator(
   osc.frequency.value = frequency;
 }
 
+function clearIdleSuspendTimer(): void {
+  if (idleSuspendTimer === null) return;
+  clearTimeout(idleSuspendTimer);
+  idleSuspendTimer = null;
+}
+
+function disposeAudioContext(): void {
+  clearIdleSuspendTimer();
+  const ctx = audioContext;
+  audioContext = null;
+  if (!ctx) return;
+  try {
+    void ctx.close();
+  } catch {
+    return;
+  }
+}
+
+function resolveAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (audioContext && audioContext.state !== "closed") return audioContext;
+  const audioWindow = window as AudioWindow;
+  const AudioContextCtor =
+    audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  audioContext = new AudioContextCtor();
+  return audioContext;
+}
+
+function resumeAudioContext(ctx: AudioContext): void {
+  if (ctx.state === "suspended") void ctx.resume();
+}
+
+function scheduleIdleSuspend(ctx: AudioContext): void {
+  clearIdleSuspendTimer();
+  idleSuspendTimer = setTimeout(() => {
+    idleSuspendTimer = null;
+    if (audioContext !== ctx || ctx.state === "closed") return;
+    if (typeof ctx.suspend === "function") void ctx.suspend();
+  }, AUDIO_CONTEXT_IDLE_SUSPEND_MS);
+}
+
 export function playAgentAlertSound(volume = 0.5): void {
   const normalizedVolume = clampVolume(volume);
   if (normalizedVolume <= 0) return;
@@ -100,38 +145,12 @@ export function playAgentAlertSound(volume = 0.5): void {
     injectedPlayer(normalizedVolume);
     return;
   }
-  if (typeof window === "undefined") return;
-  let ctx: AudioContext | null = null;
-  let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
-  let cleanedUp = false;
-  const cleanup = () => {
-    if (cleanedUp) return;
-    cleanedUp = true;
-    if (cleanupTimer !== null) {
-      clearTimeout(cleanupTimer);
-      cleanupTimer = null;
-    }
-    const audioContext = ctx;
-    ctx = null;
-    if (!audioContext) return;
-    try {
-      void audioContext.close();
-    } catch {
-      return;
-    }
-  };
-  const cleanupAfterTail = () => {
-    if (cleanupTimer !== null) clearTimeout(cleanupTimer);
-    cleanupTimer = setTimeout(cleanup, AUDIO_CONTEXT_CLOSE_GRACE_MS);
-  };
 
   try {
-    const audioWindow = window as AudioWindow;
-    const AudioContextCtor =
-      audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
-    if (!AudioContextCtor) return;
-    ctx = new AudioContextCtor();
-    if (ctx.state === "suspended") void ctx.resume();
+    const ctx = resolveAudioContext();
+    if (!ctx) return;
+    clearIdleSuspendTimer();
+    resumeAudioContext(ctx);
     const now = ctx.currentTime;
     const oscillators: ToneOscillator[] = [];
     for (const note of PHONE_CHIME_NOTES) {
@@ -147,12 +166,19 @@ export function playAgentAlertSound(volume = 0.5): void {
       oscillator.stop(start + note.duration);
       oscillators.push(oscillator);
     }
-    cleanupTimer = setTimeout(cleanup, (ALERT_DURATION_SECONDS + 0.68) * 1_000);
+    const suspendAfterTail = () => scheduleIdleSuspend(ctx);
+    const fallbackTimer = setTimeout(
+      suspendAfterTail,
+      (ALERT_DURATION_SECONDS + 0.68) * 1_000,
+    );
     oscillators[oscillators.length - 1]?.addEventListener(
       "ended",
-      cleanupAfterTail,
+      () => {
+        clearTimeout(fallbackTimer);
+        suspendAfterTail();
+      },
     );
   } catch {
-    cleanup();
+    disposeAudioContext();
   }
 }
