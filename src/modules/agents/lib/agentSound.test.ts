@@ -76,9 +76,10 @@ describe("agentSound", () => {
     expect(() => playAgentAlertSound()).not.toThrow();
   });
 
-  it("closes browser audio from fallback timer when ended never fires", () => {
+  it("suspends browser audio from fallback timer when ended never fires", () => {
     vi.useFakeTimers();
     const close = vi.fn(() => Promise.resolve());
+    const suspend = vi.fn(() => Promise.resolve());
     vi.stubGlobal("window", {
       AudioContext: vi.fn(function AudioContextMock() {
         return {
@@ -97,6 +98,8 @@ describe("agentSound", () => {
           }),
           currentTime: 0,
           destination: {},
+          state: "running",
+          suspend,
         };
       }),
     });
@@ -104,14 +107,17 @@ describe("agentSound", () => {
     playAgentAlertSound();
 
     expect(close).not.toHaveBeenCalled();
-    vi.runOnlyPendingTimers();
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(suspend).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(5_300);
+    expect(suspend).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
-  it("closes browser audio once when ended fires before fallback timer", () => {
+  it("suspends browser audio after an idle grace when ended fires", () => {
     vi.useFakeTimers();
     const close = vi.fn(() => Promise.resolve());
+    const suspend = vi.fn(() => Promise.resolve());
     const handlers: { ended?: () => void } = {};
     vi.stubGlobal("window", {
       AudioContext: vi.fn(function AudioContextMock() {
@@ -133,6 +139,8 @@ describe("agentSound", () => {
           }),
           currentTime: 0,
           destination: {},
+          state: "running",
+          suspend,
         };
       }),
     });
@@ -142,7 +150,51 @@ describe("agentSound", () => {
 
     expect(close).not.toHaveBeenCalled();
     vi.advanceTimersByTime(200);
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(suspend).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(4_000);
+    expect(suspend).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("keeps browser audio warm between alert chimes", () => {
+    vi.useFakeTimers();
+    const close = vi.fn(() => Promise.resolve());
+    const handlers: Array<() => void> = [];
+    const AudioContextMock = vi.fn(function AudioContextMock() {
+      return {
+        close,
+        createGain: () => ({
+          connect: vi.fn(),
+          gain: { value: 0 },
+        }),
+        createOscillator: () => ({
+          addEventListener: vi.fn((event: string, handler: () => void) => {
+            if (event === "ended") handlers.push(handler);
+          }),
+          connect: vi.fn(),
+          frequency: { value: 0 },
+          start: vi.fn(),
+          stop: vi.fn(),
+          type: "sine",
+        }),
+        currentTime: 0,
+        destination: {},
+      };
+    });
+    vi.stubGlobal("window", { AudioContext: AudioContextMock });
+
+    vi.setSystemTime(1_000);
+    playAgentAlertSound();
+    handlers[handlers.length - 1]?.();
+    vi.advanceTimersByTime(200);
+
+    expect(close).not.toHaveBeenCalled();
+
+    vi.setSystemTime(1_700);
+    playAgentAlertSound();
+
+    expect(AudioContextMock).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
